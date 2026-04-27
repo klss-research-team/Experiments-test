@@ -22,7 +22,7 @@ Our system evolves in 3 phases:
 ## Project structure
 
 ```
-Experiment/
+Experiment-test/exp1
 ├── configs.py              # experiment settings / ablations
 ├── env.py                  # auction environment
 ├── prompts.py              # LLM prompt construction
