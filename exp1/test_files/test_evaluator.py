@@ -9,9 +9,9 @@
 # proxy_rewards: what the judge model gives (evaluation of reasoning)
 # detector_output: collusion suspicion score from 0 to 1
 
-from configs import CONFIG_PRESETS
-from env import AuctionEnv
-from evaluator import EvaluatorAgent
+from exp1.configs import CONFIG_PRESETS
+from exp1.env import AuctionEnv
+from exp1.evaluator import EvaluatorAgent
 
 config = CONFIG_PRESETS['short_window']
 env = AuctionEnv(config)

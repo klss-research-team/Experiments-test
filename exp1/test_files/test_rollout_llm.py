@@ -1,8 +1,8 @@
 # test_rollout_llm.py
 
-from configs import CONFIG_PRESETS
-from rollout import run_rollout, LLMAuctionAgent, PlaceholderAgent
-from models import LLMPolicy
+from exp1.configs import CONFIG_PRESETS
+from exp1.rollout import run_rollout, LLMAuctionAgent, PlaceholderAgent
+from exp1.models import LLMPolicy
 
 config = CONFIG_PRESETS['short_window']
 config.max_timesteps = 3 # keep small for now since locally-run LLMs is slow

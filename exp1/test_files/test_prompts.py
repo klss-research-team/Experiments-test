@@ -1,6 +1,6 @@
-from configs import CONFIG_PRESETS
-from env import AuctionEnv
-from prompts import build_agent_prompt, build_evaluator_prompt
+from exp1.configs import CONFIG_PRESETS
+from exp1.env import AuctionEnv
+from exp1.prompts import build_agent_prompt, build_evaluator_prompt
 
 config = CONFIG_PRESETS['short_window']
 

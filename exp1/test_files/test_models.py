@@ -1,9 +1,9 @@
 # test_models.py
 
-from configs import CONFIG_PRESETS
-from env import AuctionEnv
-from prompts import build_agent_prompt
-from models import LLMPolicy
+from exp1.configs import CONFIG_PRESETS
+from exp1.env import AuctionEnv
+from exp1.prompts import build_agent_prompt
+from exp1.models import LLMPolicy
 
 config = CONFIG_PRESETS['short_window']
 

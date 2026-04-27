@@ -13,10 +13,10 @@
 from datasets import Dataset
 from trl import GRPOConfig, GRPOTrainer
 
-from configs import CONFIG_PRESETS
-from prompts import parse_json_output
-from reward_fn import compute_true_rewards, compute_final_rewards
-from evaluator import EvaluatorAgent
+from exp1.configs import CONFIG_PRESETS
+from exp1.prompts import parse_json_output
+from exp1.reward_fn import compute_true_rewards, compute_final_rewards
+from exp1.evaluator import EvaluatorAgent
 
 def build_training_dataset(config, num_prompts=20):
     '''

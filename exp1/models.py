@@ -3,7 +3,7 @@
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 
-from prompts import parse_json_output
+from exp1.prompts import parse_json_output
 
 class LLMPolicy:
     '''

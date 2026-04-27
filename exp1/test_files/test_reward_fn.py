@@ -1,7 +1,7 @@
-from configs import CONFIG_PRESETS
-from env import AuctionEnv
-from evaluator import EvaluatorAgent
-from reward_fn import compute_reward_shaping
+from exp1.configs import CONFIG_PRESETS
+from exp1.env import AuctionEnv
+from exp1.evaluator import EvaluatorAgent
+from exp1.reward_fn import compute_reward_shaping
 
 config = CONFIG_PRESETS["short_window"]
 

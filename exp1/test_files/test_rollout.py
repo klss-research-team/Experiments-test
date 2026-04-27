@@ -1,7 +1,7 @@
 # test_rollout.py
 
-from configs import CONFIG_PRESETS
-from rollout import run_rollout
+from exp1.configs import CONFIG_PRESETS
+from exp1.rollout import run_rollout
 
 config = CONFIG_PRESETS['short_window']
 

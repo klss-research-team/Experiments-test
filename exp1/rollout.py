@@ -8,12 +8,12 @@
 # use placeholder agents before we add in LLMs
 import random as rd
 
-from env import AuctionEnv
-from evaluator import EvaluatorAgent
-from reward_fn import compute_reward_shaping
+from exp1.env import AuctionEnv
+from exp1.evaluator import EvaluatorAgent
+from exp1.reward_fn import compute_reward_shaping
 
-from prompts import build_agent_prompt
-from models import LLMPolicy
+from exp1.prompts import build_agent_prompt
+from exp1.models import LLMPolicy
 
 class LLMAuctionAgent:
     '''

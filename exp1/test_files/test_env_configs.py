@@ -1,5 +1,5 @@
-from configs import CONFIG_PRESETS
-from env import AuctionEnv
+from exp1.configs import CONFIG_PRESETS
+from exp1.env import AuctionEnv
 
 # Notes:
 # in ext_signals:
