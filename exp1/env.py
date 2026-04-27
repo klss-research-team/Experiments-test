@@ -14,8 +14,8 @@ class AuctionEnv:
     config = {
         'state_type': 'window', 'full', or 'last_step',
         'history_window': 5, (only used if state_type is 'window')
-        'min_bid': 0,
-        'max_bid': 100,
+        'min_bid': 50,
+        'max_bid': 180,
         'max_timesteps': 50
     }
     env = AuctionEnv(config)
