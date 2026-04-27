@@ -35,7 +35,7 @@ Experiment/
 ├── evaluate.py             # metrics (CI, SDR, etc.)
 ├── metrics.py              # metric implementations (TODO)
 ├── analysis.ipynb          # visualization
-└── README.md
+├── README.md
 └──test_files/
     ├── test_env_configs.py
     ├── test_evaluator.py
