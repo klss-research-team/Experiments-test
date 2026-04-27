@@ -36,6 +36,17 @@ Experiment/
 ├── metrics.py              # metric implementations (TODO)
 ├── analysis.ipynb          # visualization
 └── README.md
+└──test_files/
+    ├── test_env_configs.py
+    ├── test_evaluator.py
+    ├── test_models.py
+    ├── test_prompts.py
+    ├── test_reward_fn.py
+    ├── test_reward_over_time.py
+    ├── test_rollout.py
+    ├── test_rollout_llm.py
+    ├── test_runs.ipynb
+    └── train_grpo.py
 ```
 
 ## Components
