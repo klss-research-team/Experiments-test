@@ -1,0 +1,13 @@
+experiment/
+├── configs.py              # settings: model names, rounds, reward weights
+├── env.py                  # auction environment + history tracking
+├── prompts.py              # prompts for agent, judge, detector
+├── models.py               # LLM loading + generation helpers
+├── evaluator.py            # judge score + detector score
+├── reward_fn.py            # final reward = proxy + true - detector penalty
+├── rollout.py              # runs one full episode/trajectory
+├── dataset_build.py        # turns rollouts into GRPO training data
+├── train_grpo.py           # TRL GRPOTrainer
+├── evaluate.py             # CI, SDR, detection metrics
+├── analysis.ipynb          # plots/results
+└── README.md
