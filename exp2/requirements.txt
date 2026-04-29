@@ -1,0 +1,13 @@
+# requirements.txt
+
+# python=3.12
+
+torch
+transformers
+vllm
+pandas
+numpy
+pyarrow
+scikit-learn
+matplotlib
+tqdm
