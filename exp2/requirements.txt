@@ -11,3 +11,5 @@ pyarrow
 scikit-learn
 matplotlib
 tqdm
+
+pytest

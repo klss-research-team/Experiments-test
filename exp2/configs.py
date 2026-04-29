@@ -9,8 +9,8 @@ class AuctionConfig:
     num_rounds: int = 25
     min_bid: float = 0.0
     max_bid: float = 100.0
-    # cost_mean: float = 50.0
-    # cost_std: float = 5.0 # not sure what these r for
+    cost_mean: float = 50.0 # mean and std for assignment marginal costs in contract
+    cost_std: float = 5.0 
     history_window: int = 10
 
     # reward configs
@@ -33,9 +33,9 @@ class ModelConfig:
     '''
     Configurations for LLM agents (bidders + judge/detector)
     '''
-    pricing_model_1: str: "Qwen/Qwen2.5-0.5B-Instruct" # put in kushaan's agents later
-    pricing_model_2: str: "Qwen/Qwen2.5-0.5B-Instruct"
-    judge_detector_model: str: "Qwen/Qwen2.5-0.5B-Instruct"
+    pricing_model_1: str = "Qwen/Qwen2.5-0.5B-Instruct" # put in kushaan's agents later
+    pricing_model_2: str = "Qwen/Qwen2.5-0.5B-Instruct"
+    judge_detector_model: str = "Qwen/Qwen2.5-0.5B-Instruct"
 
     group_size: int = 4
     max_tokens: int = 128

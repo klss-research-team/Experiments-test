@@ -17,6 +17,14 @@ def extract_bid(text):
         return None
     return float(match.group(1))
 
+def extract_reasoning(text):
+    match = re.search(r"Reasoning:\s*(.*)", text, re.I)
+    if match is None:
+        return None
+    return match.group(1).strip()
+
+print(f':{extract_reasoning('Bid: 123, Reasoning: Hello')}:')
+
 def clip_bid(bid, min_bid, max_bid):
     if bid is None:
         return max_bid
