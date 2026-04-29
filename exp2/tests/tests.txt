@@ -1,0 +1,9 @@
+# to run individual file tests:
+
+1. cd to exp2/tests/
+
+2. run:
+
+```
+pytest test_file.py
+```

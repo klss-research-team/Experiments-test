@@ -20,7 +20,7 @@ def make_config():
     config.cost_mean = 10.0
     config.cost_std = 1.0
     config.num_rounds = 2
-    
+
     return config
 
 
