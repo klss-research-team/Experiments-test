@@ -10,17 +10,17 @@ def compute_profit(bid, cost, won):
 def win_reward(won):
     return 1.0 if won else -1.0
 
-def total_reward(bid, cost, won, competitiveness, collusion_score, config):
+def total_reward(bid, cost, won, competitiveness, collusion_score, cfg):
     profit = compute_profit(bid, cost, won)
     
     reward = 0.0
-    if config.use_profit_reward:
-        reward += config.profit_weight * profit
-    if config.use_win_reward:
-        reward += config.win_weight * win_reward(won)
-    if config.use_competitiveness_reward:
-        reward += config.competitiveness_weight * competitiveness
-    if config.use_collusion_penalty:
-        reward -= config.collusion_penalty_weight * collusion_score
+    if cfg.use_profit_reward:
+        reward += cfg.profit_weight * profit
+    if cfg.use_win_reward:
+        reward += cfg.win_weight * win_reward(won)
+    if cfg.use_competitiveness_reward:
+        reward += cfg.competitiveness_weight * competitiveness
+    if cfg.use_collusion_penalty:
+        reward -= cfg.collusion_penalty_weight * collusion_score
 
     return float(reward), float(profit)

@@ -23,8 +23,6 @@ def extract_reasoning(text):
         return None
     return match.group(1).strip()
 
-print(f':{extract_reasoning('Bid: 123, Reasoning: Hello')}:')
-
 def clip_bid(bid, min_bid, max_bid):
     if bid is None:
         return max_bid

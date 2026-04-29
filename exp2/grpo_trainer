@@ -1,0 +1,202 @@
+import copy
+from typing import Dict
+
+import torch
+from torch.optim import AdamW
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from utils import group_normalize
+
+
+class ExperimentGRPOTrainer:
+    """
+    GRPO-style trainer for pricing-agent LLMs in repeated procurement auction.
+
+    - prompt = auction state + private cost + history
+    - response = reasoning + bid
+    - reward = profit + win + competitiveness - collusion penalty
+
+    Important:
+    Loss is computed ONLY on response tokens, not prompt tokens.
+    """
+
+    def __init__(
+        self,
+        model_name_or_path: str,
+        learning_rate: float = 1e-6,
+        beta_kl: float = 0.01,
+        max_grad_norm: float = 1.0,
+        device: str | None = None,
+    ):
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.beta_kl = beta_kl
+        self.max_grad_norm = max_grad_norm
+
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+
+        self.policy = AutoModelForCausalLM.from_pretrained(
+            model_name_or_path
+        ).to(self.device)
+
+        self.ref_policy = copy.deepcopy(self.policy).to(self.device)
+        self.ref_policy.eval()
+
+        for param in self.ref_policy.parameters():
+            param.requires_grad = False
+
+        self.optimizer = AdamW(self.policy.parameters(), lr=learning_rate)
+
+    def _build_batch(self, prompts, responses, max_length):
+        """
+        Tokenizes prompt+response but creates a response_mask so only
+        response tokens contribute to GRPO loss.
+        """
+
+        full_texts = [p + "\n" + r for p, r in zip(prompts, responses)]
+
+        full_enc = self.tokenizer(
+            full_texts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+        )
+
+        prompt_enc = self.tokenizer(
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+        )
+
+        input_ids = full_enc["input_ids"]
+        attention_mask = full_enc["attention_mask"]
+
+        response_mask = torch.zeros_like(input_ids)
+
+        for i in range(len(prompts)):
+            prompt_len = int(prompt_enc["attention_mask"][i].sum().item())
+
+            # Mark response tokens only.
+            response_mask[i, prompt_len:] = attention_mask[i, prompt_len:]
+
+        return {
+            "input_ids": input_ids.to(self.device),
+            "attention_mask": attention_mask.to(self.device),
+            "response_mask": response_mask.to(self.device),
+        }
+
+    def _response_log_probs(self, model, batch):
+        """
+        Computes summed log-probability over response tokens only.
+        """
+
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
+        response_mask = batch["response_mask"]
+
+        outputs = model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+        )
+
+        logits = outputs.logits[:, :-1, :]
+        labels = input_ids[:, 1:]
+
+        shifted_response_mask = response_mask[:, 1:]
+
+        log_probs = torch.log_softmax(logits, dim=-1)
+
+        token_log_probs = log_probs.gather(
+            dim=-1,
+            index=labels.unsqueeze(-1),
+        ).squeeze(-1)
+
+        response_token_log_probs = token_log_probs * shifted_response_mask
+
+        seq_log_probs = response_token_log_probs.sum(dim=-1)
+
+        response_lengths = shifted_response_mask.sum(dim=-1).clamp(min=1)
+
+        avg_log_probs = seq_log_probs / response_lengths
+
+        return seq_log_probs, avg_log_probs, response_lengths
+
+    def train_group(self, group_df, max_length: int) -> Dict[str, float]:
+        """
+        Trains on one GRPO group.
+
+        group_df should contain multiple candidate responses for the same
+        prompt/round/agent.
+
+        Required columns:
+        - prompt
+        - response
+        - reward
+        """
+
+        prompts = group_df["prompt"].tolist()
+        responses = group_df["response"].tolist()
+
+        rewards = torch.tensor(
+            group_df["reward"].values,
+            dtype=torch.float32,
+            device=self.device,
+        )
+
+        advantages = group_normalize(rewards)
+
+        batch = self._build_batch(
+            prompts=prompts,
+            responses=responses,
+            max_length=max_length,
+        )
+
+        policy_seq_logp, policy_avg_logp, response_lengths = (
+            self._response_log_probs(self.policy, batch)
+        )
+
+        with torch.no_grad():
+            ref_seq_logp, ref_avg_logp, _ = self._response_log_probs(
+                self.ref_policy,
+                batch,
+            )
+
+        # Approximate KL on response tokens only.
+        approx_kl = policy_avg_logp - ref_avg_logp
+
+        # GRPO objective:
+        # maximize advantage * logprob - beta * KL
+        # so minimize negative of that.
+        objective = advantages * policy_avg_logp - self.beta_kl * approx_kl
+        loss = -objective.mean()
+
+        self.optimizer.zero_grad()
+        loss.backward()
+
+        grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.policy.parameters(),
+            self.max_grad_norm,
+        )
+
+        self.optimizer.step()
+
+        return {
+            "loss": float(loss.detach().cpu()),
+            "mean_reward": float(rewards.mean().detach().cpu()),
+            "std_reward": float(rewards.std(unbiased=False).detach().cpu()),
+            "mean_advantage": float(advantages.mean().detach().cpu()),
+            "mean_policy_logp": float(policy_avg_logp.mean().detach().cpu()),
+            "mean_ref_logp": float(ref_avg_logp.mean().detach().cpu()),
+            "mean_approx_kl": float(approx_kl.mean().detach().cpu()),
+            "mean_response_length": float(response_lengths.float().mean().detach().cpu()),
+            "grad_norm": float(grad_norm.detach().cpu()),
+        }
+
+    def save(self, output_dir: str):
+        self.policy.save_pretrained(output_dir)
+        self.tokenizer.save_pretrained(output_dir)

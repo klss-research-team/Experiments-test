@@ -15,8 +15,8 @@ class ProcurementAuctionEnv:
     - score assignment
     '''
 
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, cfg):
+        self.cfg = cfg
         self.agents = ['agent_1', 'agent_2']
         self.round_idx = 0
         self.history = []
@@ -36,7 +36,7 @@ class ProcurementAuctionEnv:
         '''
         costs = {}
         for agent in self.agents:
-            cost = np.random.normal(self.config.cost_mean, self.config.cost_std)
+            cost = np.random.normal(self.cfg.cost_mean, self.cfg.cost_std)
             costs[agent] = max(1.0, float(cost))
         return costs
 
@@ -44,7 +44,7 @@ class ProcurementAuctionEnv:
         '''
         returns history to feed agent during training given round and history_window configuration
         '''
-        recent = self.history[-self.config.history_window :]
+        recent = self.history[-self.cfg.history_window :]
         if not recent:
             return "No previous rounds."
         lines = []
@@ -72,7 +72,7 @@ class ProcurementAuctionEnv:
         bids = {}
         for agent in self.agents:
             raw_bid = extract_bid(actions[agent]["text"])
-            bids[agent] = clip_bid(raw_bid, self.config.min_bid, self.config.max_bid)
+            bids[agent] = clip_bid(raw_bid, self.cfg.min_bid, self.cfg.max_bid)
 
         # Procurement/reverse auction: lowest bid wins.
         winner = min(bids, key=bids.get)
@@ -102,7 +102,7 @@ class ProcurementAuctionEnv:
                 won=won,
                 competitiveness=judge_scores["competitiveness"],
                 collusion_score=final_collusion_score,
-                config=self.config,
+                cfg=self.cfg,
             )
             rewards[agent] = reward
             infos[agent] = {
@@ -126,7 +126,7 @@ class ProcurementAuctionEnv:
             }
         )
         self.round_idx += 1
-        done = self.round_idx >= self.config.num_rounds
+        done = self.round_idx >= self.cfg.num_rounds
         self.private_costs = self._sample_costs()
         return (
             self._observations(),

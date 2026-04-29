@@ -6,7 +6,8 @@ class AuctionConfig:
     Provides configurations for the reverse auction environment
     '''
     # auction configs
-    num_rounds: int = 25
+    # num_rounds: int = 25
+    num_rounds: int = 5
     min_bid: float = 0.0
     max_bid: float = 100.0
     cost_mean: float = 50.0 # mean and std for assignment marginal costs in contract
@@ -37,7 +38,8 @@ class ModelConfig:
     pricing_model_2: str = "Qwen/Qwen2.5-0.5B-Instruct"
     judge_detector_model: str = "Qwen/Qwen2.5-0.5B-Instruct"
 
-    group_size: int = 4
+    # group_size: int = 4
+    group_size: int = 2
     max_tokens: int = 128
     temperature: float = 0.8
     top_p: float = 0.95
@@ -48,7 +50,8 @@ class TrainConfig:
     Configurations for training
     '''
     run_dir: str = 'runs/run_01'
-    num_cycles: int = 3
+    # num_cycles: int = 3
+    num_cycles: int = 1
 
     pricing_learning_rate: float = 1e-6
     beta_kl: float = 0.01
