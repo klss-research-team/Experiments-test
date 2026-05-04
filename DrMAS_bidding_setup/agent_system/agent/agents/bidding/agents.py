@@ -85,6 +85,7 @@ class BidderAgentA(BaseAgent):
         batch.non_tensor_batch["env_step"] = np.array([step] * len(text_responses), dtype=object)
         return batch, text_responses
 
+
 @AgentRegistry.register("BidderB")
 class BidderBAgent(BaseAgent):
     def __init__(self, wg_id: str, tokenizer: PreTrainedTokenizer,processor: Any, config: Any):
@@ -107,5 +108,43 @@ class BidderBAgent(BaseAgent):
         batch.non_tensor_batch["is_action_valid"] = np.ones(len(text_responses), dtype=bool)
         batch.non_tensor_batch["env_step"] = np.array([step] * len(text_responses), dtype=object)
         return batch, text_responses
+    
 
+@AgentRegistry.register("Detector")
+class DetectorAgent(BaseAgent):
+    def __init__(self, wg_id: str, tokenizer: PreTrainedTokenizer, processor: Any, config: Any):
+        super().__init__("Detector", DETECTOR_PROMPT, wg_id=wg_id, tokenizer=tokenizer, processor=processor, config=config)
+        self.start_tag = "<collusion_score>"
+        self.end_tag   = "</collusion_score>"
 
+    def call(self, gen_batch, env_obs, team_context, actor_rollout_wg, agent_active_mask, step):
+        obs   = self.build_prompt(env_obs, team_context, step)
+        batch = preprocess_batch(gen_batch=gen_batch, 
+                                 obs=obs, 
+                                 config=self.config, 
+                                 tokenizer=self.tokenizer, 
+                                 processor=self.processor
+        )
+
+        batch, text_responses = self._generate_with_llm(batch, actor_rollout_wg, agent_active_mask, gen_batch.meta_info)
+        text_resposnes,  valids = general_projection( # TODO: define general_projection() in agent_system.agent.utils
+            text_responses,
+            start_tag=self.start_tag,
+            end_tag=self.end_tag,
+            check_think_tag=False,
+            return_whole_response=True
+        )
+
+        batch.non_tensor_batch["is_action_valid"] = np.ones(len(text_responses), dtype=bool)
+        batch.non_tensor_batch["env_step"] = np.array([step] * len(text_responses), dtype=object)
+        return batch, text_responses
+
+    def extract_collusion_scores(self, text_responses: List[str]) -> np.ndarray:
+        """Parse <collusion_score>…</collusion_score> from each response."""
+        import re
+        scores = []
+        for resp in text_responses:
+            m = re.search(r"<collusion_score>([\d.]+)</collusion_score>", resp)
+            score = float(m.group(1)) if m else 0.0
+            scores.append(min(max(score, 0.0), 1.0))
+        return np.array(scores, dtype=float)

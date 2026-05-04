@@ -382,10 +382,8 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 agent_id = a['agent_id']
                 agents_to_wg_mapping[agent_id] = wg_id
 
-        if orchestra_type == "search":
-            from agent_system.agent.orchestra.search import SearchMultiAgentOrchestra as orchestra
-        elif orchestra_type == "math":
-            from agent_system.agent.orchestra.math import MathMultiAgentOrchestra as orchestra
+        if orchestra_type == "bidding":
+            from agent_system.agent.orchestra.bidding import BiddingMultiAgentOrchestra as orchestra
         else:
             raise ValueError(f"Unknown orchestra_type '{orchestra_type}'.")
 
