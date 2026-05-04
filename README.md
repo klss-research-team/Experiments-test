@@ -1,4 +1,4 @@
-### See: Outline.txt
+### See: `Outline.txt`
 
 `DrMAS_master/` : original DrMAS repo (don't change)
 
