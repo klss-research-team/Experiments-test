@@ -3,24 +3,36 @@
 import asyncio
 import concurrent.futures
 from typing import Any, Dict, List
+import numpy as np
 # from agent_system.environments.env_package.math.math_reward import RewardConfig, RewardMathFn
 from agent_system.environments.env_package.bidding.bidding_reward import RewardConfig, RewardBiddingFn
 
 # TODO: adapt MathEnv and MathMultiProcessEnv -> BiddingEnv and BiddingMultiProcessEnv
-
+# go over the entire BiddingEnv (help)
 class BiddingEnv:
     """
-    Environment for bidding tasks
+    Environment for bidding tasks.
+
+    Holds the state for one contract episode.
+
+    The orchestra handles all multi-turn bidding interanlly, so this environment only needs to:
+        - reset(): supply the contract as the initial observation
+        - step(): signal done=True (rewards written by the orchestra)
     """
     def __init__(self,):
         self.ground_truth = None # ?? profit?
-        self.data.source = "unknown" # ??
+        self.contract = Dict[str, Any] = {} # added from outline
+        self.data.source = "bidding"
         reward_config = RewardConfig()
         self.reward_fn = RewardBiddingFn(reward_config)
 
     def reset(self, extras: Dict[str, Any]) -> str:
-        self.ground_truth = extras['ground_truth']
-        self.data_source = extras.get("data_source", "unknown")
+        self.contract = extras["contract"]
+        self.data_source = extras.get("data_source", "bidding")
+        obs = self._format_contract(self.contract)
+        return obs, {"data source": self.data_source}
+
+        self.ground_truth = extras["ground_truth"] # ??? kept from math, idk
 
     def step(self, action: str):
         done = True # always done after one step
@@ -37,6 +49,12 @@ class BiddingEnv:
         obs = None
         info = {"data_source": self.data_source, "won": win_reward} # add more from reward function; change according to total_reward
         return obs, total_reward, done, info # update later
+    
+    # TODO
+    # def _format_contract(self, contract: Dict) -> str:
+    #     return (
+    #         f"Contract ID": 
+    #     )
     
     # TODO: fill in
     def close(self) -> None:
@@ -81,8 +99,7 @@ class BiddingMultiProcessEnv:
 
     # TODO: fill in
     def _sync_step(self, env, action, kwargs):
-        obs, reward, done, info = env.step(action)
-        return obs, reward, done, info
+        return env.step(action)
 
     # TODO: fill in
     def reset(self, kwargs: List[Dict]):
@@ -110,7 +127,9 @@ def build_bidding_envs(
     env_num: int = 1,
     group_n: int = 1,
     is_train: bool = True,
-):
+    env_config=None
+    ) -> BiddingMultiProcessEnv:
+
     return BiddingMultiProcessEnv(
         seed=seed,
         env_num=env_num,

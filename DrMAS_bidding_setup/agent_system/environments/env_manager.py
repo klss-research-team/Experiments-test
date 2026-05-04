@@ -20,6 +20,7 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
         self.memory = SearchMemory()
         super().__init__(envs, projection_f, config)
 
+    # TODO: this was different in the outline file
     def reset(self, kwargs) -> Tuple[Dict[str, Any], List[Dict]]:
         obs, infos = self.envs.reset(kwargs=kwargs)
         self.tasks = obs
@@ -271,7 +272,7 @@ def make_envs(config):
     val_group_n = getattr(config.env.rollout, 'val_n', 1)
 
     if "bidding" in config.env.env_name.lower():
-        from agent_system.environments.env_package.bidding import build_bidding_envs, bidding_projection
+        from agent_system.environments.env_packages.bidding import build_bidding_envs, bidding_projection
         _envs = build_bidding_envs(sed=config.env.seed, env_num=config.data.train_batch_size, group_n=group_n, is_train=True)
         _val_envs = build_bidding_envs(seed=config.env.seed + 1000, enf_num = config.data.val_batch_size, group_n=val_group_n, is_train=False)
 
