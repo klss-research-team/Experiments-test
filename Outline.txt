@@ -1,0 +1,537 @@
+# Steps to develop our custom agents
+
+1. Create new agents by:
+    1. Define prompt template with placeholders `{env_prompt}`, {team_context}`, and optionally {step}`
+    2. Inherit from `BaseAgent` and implement the `call` method
+    3. Use the `@AgentRegistry.register` dedorator to register the agents
+
+    ```
+    # agent_system/agent/agents/bidding/bidding_agents.py
+
+    BIDDER_A_PROMPT = """
+    ...
+    """
+
+    BIDDER_B_PROMPT = """
+    ...
+    """
+
+    @AgentRegistry.register("BidderA")
+    class BidderAgentA(BaseAgent):
+        """
+        Agent that...
+        """
+
+        ...
+
+        def call(
+            self,
+            gen_batch: DataProto,
+            env_obs: Dict[str, Any],
+            team_context: List[str],
+            actor_rollout_wg,
+            agent_active_mask: np.ndarray,
+            step: int
+        ) -> Tuple[DataProto, List[str]]:
+        """
+        Generate a bid + reasoning based on the current observation and team_context.
+        """
+
+        ... (same as original)
+
+    @AgentRegistry.register("BidderA")
+    class BidderAgentA(BaseAgent):
+        """
+        Agent that...
+        """
+
+        ...
+
+        def call(
+            self,
+            gen_batch: DataProto,
+            env_obs: Dict[str, Any],
+            team_context: List[str],
+            actor_rollout_wg,
+            agent_active_mask: np.ndarray,
+            step: int
+        ) -> Tuple[DataProto, List[str]]:
+        """
+        Generate a bid + reasoning based on the current observation and team_context.
+        """
+
+        ... (same as original)
+    ```
+
+    ```
+    # agent_system/agent/agents/bidding/bidding_agents.py
+
+    DETECTOR_PROMPT = """
+    ...
+    """
+
+    @AgentRegistry.register("Detector")
+    class DetectorAgent(BaseAgent):
+        """
+        Agent that...
+        """
+
+        ...
+
+        def call(
+            self,
+            gen_batch: DataProto,
+            env_obs: Dict[str, Any],
+            team_context: List[str],
+            actor_rollout_wg,
+            agent_active_mask: np.ndarray,
+            step: int
+        ) -> Tuple[DataProto, List[str]]:
+        """
+        Generate a bid + reasoning based on the current observation and team_context.
+        """
+
+        ... (same as original)
+    ```
+
+
+2. Register the Agent
+
+    2.1 Create the `__init__.py` file in the agent module directory
+
+    ```
+    # agent_system/agent/agents/bidding/__init__.py
+
+    from .bidding_agents import BidderAgentA, BidderAgentB
+    from .detector_agents import DetectorAgent
+
+    __all__ = [
+        "BidderA",
+        "BidderB",
+        "Detector"
+    ]
+    ```
+
+    2.2 Import in the orchestra
+
+    The agent module must be imported before the agents are created. This is done in the orchestra's `__init__` method.
+
+    Note: the code below is included in the `__init__` method of `class BiddingMultiAgentOrchestra(BaseOrchestra)`.
+
+    ```
+    # agent_system/agent/orchestra/bidding/bidding_orchestra.py
+
+    import importlib
+    importlib.import_module("agent_system.agent.agents.bidding")
+```
+
+
+3. Agent best practices
+
+    a. Prompt design
+        - always include `{env_prompt}` to receive environment context
+        - use `{team_context}` to incorporate outputs from other agents
+        - use `{step}` if step-dependent behavior is needed
+        - define clear output format with XML-like tags for parsing
+    
+    b. Output parsing
+        - use `general_projection()` for standard tag-based parsing
+        - use `math_projection()` for `\boxed{}` style math answers
+        - set `check_think_tag=True` if reasoning is required
+    
+    c. Action validation
+        - always set `is_action_valid` in `non_tensor_batch`
+        - invalid actions can receive penalties during training
+    
+    d. Custom agent methods
+        - add custom methods for agent-specific logic (e.g., `get_verification_vector`)
+        - these can be called by the orchestra for routing decisions
+
+4. Developing Custom Orchestras
+
+    4.1 Create new orchestra by inheriting from `BaseOrchestra`
+
+    ```
+    # agent_system/agent/orchestra/bidding/bidding_orchestra.py
+
+    import importlib
+
+    class BiddingMultiAgentOrchestra(BaseOrchestra):
+        """
+        Custom multi-agent orchestra implementing ... [our experiment]
+
+        Architecture:
+        - BidderA : [role description]
+        - BidderB : [role description]
+        - Detector : [role description]
+
+        Execution Flow:
+        [describe our execution flow]
+
+        # define agent name constants
+        BIDDER_AGENT_A = "BidderA"
+        BIDDER_AGENT_B = "BidderB"
+        DETECTOR_AGENT = "Detector"
+
+        def __init__(....) # same as original
+
+            # IMPORTANT: import agent modules BEFORE calling super().__init__
+            importlib.import_module("agent_system.agent.agents.bidding)
+
+            # validate required agents
+            if self.BIDDER_AGENT_A not in self.agent_ids:
+                aise ValueError(f"{self.BIDDER_AGENT_A} is required.")
+            if self.BIDDER_AGENT_B not in self.agent_ids:
+                raise ValueError(f"{self.BIDDER_AGENT_B} is required.")
+            if self.DETECTOR_AGENT not in self.agent_ids:
+                raise ValueError(f"{self.DETECTOR_AGENT} is required.")
+            
+            # Load orchestra-specific configuration
+            self.max_iterations = getattr(
+                self.config.agent.orchestra.bidding,
+                "max_iterations",
+                3
+            )
+        
+        def run( # same as original
+            self,
+            gen_batch: DataProto,
+            env_obs: Dict[str, Any],
+            actor_rollout_wgs: Dict[str, Any],
+            active_masks: np.ndarray,
+            step: int
+        ) -> Tuple[List[str], List[Dict]]:
+            """
+            Run the orchestra.
+            
+            Returns:
+                text_actions: Final actions to send to environment
+                multiagent_batch_buffer: List of agent outputs for training
+            """
+            # Reset buffer at the start of each run
+            self.reset_buffer()
+            
+            # Initialize context
+            text_actions, team_context, env_obs = self.initialize_context(env_obs)
+            agent_active_mask = np.logical_and(
+                np.ones(len(gen_batch), dtype=bool), 
+                active_masks
+            ).astype(bool)
+    
+
+            # ===== STEP 1: Run BidderA =====
+            if self.AGENT_1 in self.agents:
+                actor_rollout_wg = actor_rollout_wgs[
+                    self.agents_to_wg_mapping[self.AGENT_1]
+                ]
+                
+                batch, text_responses = self.agents[self.AGENT_1].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=actor_rollout_wg,
+                    agent_active_mask=agent_active_mask,
+                    step=step,
+                )
+                
+                # Update team context with agent 1 output
+                team_context = update_team_context(
+                    self.AGENT_1, 
+                    team_context, 
+                    text_responses, 
+                    agent_active_mask
+                )
+                
+                # Save to buffer for training
+                self.save_to_buffer(self.AGENT_1, batch)
+
+            # ===== STEP 1: Run BidderB =====
+            if self.AGENT_1 in self.agents:
+                actor_rollout_wg = actor_rollout_wgs[
+                    self.agents_to_wg_mapping[self.AGENT_1]
+                ]
+                
+                batch, text_responses = self.agents[self.AGENT_1].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=actor_rollout_wg,
+                    agent_active_mask=agent_active_mask,
+                    step=step,
+                )
+                
+                # Update team context with agent 1 output
+                team_context = update_team_context(
+                    self.AGENT_1, 
+                    team_context, 
+                    text_responses, 
+                    agent_active_mask
+                )
+                
+                # Save to buffer for training
+                self.save_to_buffer(self.AGENT_1, batch)
+
+            # ===== STEP 3: Run Detector Agent =====
+            if self.AGENT_1 in self.agents:
+                actor_rollout_wg = actor_rollout_wgs[
+                    self.agents_to_wg_mapping[self.AGENT_1]
+                ]
+                
+                batch, text_responses = self.agents[self.AGENT_1].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=actor_rollout_wg,
+                    agent_active_mask=agent_active_mask,
+                    step=step,
+                )
+                
+                # Update team context with agent 1 output
+                team_context = update_team_context(
+                    self.AGENT_1, 
+                    team_context, 
+                    text_responses, 
+                    agent_active_mask
+                )
+                
+                # Save to buffer for training
+                self.save_to_buffer(self.AGENT_1, batch)
+            
+            return text_actions, self.multiagent_batch_buffer
+    ```
+
+    NOTE: make sure to alternate between BidderA and BidderB going first in the round.
+
+5. Register the Orchestras
+
+    5.1 Create the `__init__.py` file
+
+    ```
+    # agent_system/agent/orchestra/bidding/__init__.py
+
+    from .bidding_orchestra.py import BiddingMultiAgentOrchestra
+
+    __all__ = ["BiddingMultiAgentOrchestra"]
+    ```
+
+    5.2 Register in the rollout loop
+
+    Add our orchestra to `agent_system/multi_turn_rollout/rollout_loop.py`
+
+    ```
+    # in class MultiAgentTrajectoryCollector(TrajectoryCollector) add:
+
+        if orchestra_type == "search":
+            from agent_system.agent.orchestra.search import SearchMultiAgentOrchestra as orchestra
+        elif orchestra_type == "math":
+            from agent_system.agent.orchestra.math import MathMultiAgentOrchestra as orchestra
+        elif orchestra_type == "bidding":
+            from agent_system.agent.orchestra.bidding import BiddingMultiAgentOrchestra as orchestra
+        else:
+            raise ValueError(f"Unknown orchestra_type '{orchestra_type}'.")
+    ```
+
+6. Configuration Guide
+
+    6.1 Agent configuration
+
+        Configure our multi-agent system in the training script or YAML config:
+
+        ```
+        agent:
+        multi_agent: True
+        agent_ids: ["BidderA", "BidderB", "Detector"]
+        model_ids: ["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-3B-Instruct", "microsoft/Phi-3-mini-4k-instruct"]
+        model_sharing: False    # False = each agent gets dedicated LLM
+        orchestra_type: bidding
+        
+        # Orchestra-specific settings
+        orchestra:
+            bidding:
+            max_iterations: 3
+        ```
+
+    6.2 Model sharing
+
+        - `model_sharing: False` for non-sharing/heterogenous
+    
+    6.3 Per-agent parameter overrides
+
+        Override training parameters per agent
+    
+        ```
+        agent:
+            agent_ids: ["BidderA", "BidderB", "Detector"]
+            model_ids: ["model/path", "model/path", "model/path"]
+        
+        agent_specific_parameters:
+            # Learning rate per agent
+            actor.optim.lr: [1e-6, 1e-6, 1e-6]
+            # Micro batch size per agent
+            actor.ppo_micro_batch_size_per_gpu: [4, 4, 4]
+        ```
+
+    6.4 Command line override example
+
+        ```
+        python3 -m verl.trainer.main_ppo \
+            agent.agent_ids='["BidderA", "BidderB", "Detector"]' \
+            agent.model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-3B-Instruct", "microsoft/Phi-3-mini-4k-instruct"]' \
+            agent.model_sharing=False \
+            agent.orchestra_type=bidding \
+            agent.orchestra.my_domain.max_iterations=5 \
+            +agent.agent_specific_parameters.actor.optim.lr='[1e-6, 1e-6, 1e-6]' \
+            # ... other configs
+        ```
+
+7. Running our multi-agent setup
+
+    7.1 Create training script
+
+        ```
+        #!/bin/bash
+        # examples/bidding_trainer/run_bidding.sh
+
+        set -x
+
+        ##################### Agent Configurations #####################
+        agent_ids='["BidderA", "BidderB", "Detector"]'
+        model_ids='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-3B-Instruct", "microsoft/Phi-3-mini-4k-instruct"]'
+        model_sharing=False
+
+        orchestra_type=bidding
+        max_iterations=3
+
+        # Agent-specific parameters
+        actor_optim_lr='[1e-6, 1e-6, 1e-6]'
+        actor_ppo_micro_batch_size_per_gpu='[4, 4, 4]'
+
+        ##################### Run Training #####################
+        python3 -m verl.trainer.main_ppo \
+            algorithm.adv_estimator=grpo \
+            algorithm.group_by_agent_id=True \
+            data.train_files=$HOME/data/my_domain/train.parquet \
+            data.val_files=$HOME/data/my_domain/test.parquet \
+            data.train_batch_size=32 \
+            data.val_batch_size=64 \
+            actor_rollout_ref.model.path=null \
+            actor_rollout_ref.actor.optim.lr=null \
+            +agent.agent_specific_parameters.actor.optim.lr=$actor_optim_lr \
+            actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=null \
+            +agent.agent_specific_parameters.actor.ppo_micro_batch_size_per_gpu=$actor_ppo_micro_batch_size_per_gpu \
+            agent.agent_ids="$agent_ids" \
+            agent.model_ids="$model_ids" \
+            agent.model_sharing=$model_sharing \
+            agent.orchestra_type=$orchestra_type \
+            agent.orchestra.bidding.max_iterations=$max_iterations \
+            env.env_name=my_env \ # TODO: do we change this??
+            env.max_steps=10 \
+            env.rollout.n=8 \
+            trainer.n_gpus_per_node=8 \
+            trainer.total_epochs=2
+        ```
+
+        Tinuade's example script:
+
+        ```
+        # run_bidding.sh
+
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        # ── Data paths ─────────────────────────────────────────────────────────────
+        TRAIN_DATA="$HOME/data/bidding/train.parquet"
+        VAL_DATA="$HOME/data/bidding/val.parquet"
+
+        # ── Algorithm ──────────────────────────────────────────────────────────────
+        ALGORITHM=grpo          # GRPO: no critic, group-relative advantages
+        GROUP_SIZE=8            # rollouts per contract per training step
+        GROUP_BY_AGENT_ID=True  # DrMAS core feature: normalize advantages per agent
+
+        # ── Agents ─────────────────────────────────────────────────────────────────
+        # Three agents, three separate models, no weight sharing.
+        AGENT_IDS='["BidderA","BidderB","Detector"]'
+        MODEL_IDS='["Qwen/Qwen2.5-3B-Instruct","Qwen/Qwen2.5-3B-Instruct", "microsoft/Phi-3-mini-4k-instruct"]'
+        MODEL_SHARING=False
+
+        # Per-agent learning rates (list must match agent order above)
+        LR='[1e-6,1e-6,1e-6]'
+        MICRO_BS='[4,4,4]'
+
+        # ── Orchestra ──────────────────────────────────────────────────────────────
+        ORCHESTRA_TYPE=bidding
+        MAX_BIDS=5               # max rounds per bidder per episode
+        COLLUSION_PENALTY=0.5    # coefficient λ: bidder_reward = comp - λ * collusion_score
+
+        # ── Experiment naming ───────────────────────────────────────────────────────
+        EXPERIMENT_NAME="bidding_grpo_Qwen3-4B_mb${MAX_BIDS}"
+
+        python3 -m verl.trainer.main_ppo \
+            algorithm.adv_estimator=${ALGORITHM} \
+            algorithm.group_by_agent_id=${GROUP_BY_AGENT_ID} \
+            \
+            data.train_files=${TRAIN_DATA} \
+            data.val_files=${VAL_DATA} \
+            data.train_batch_size=32 \
+            data.val_batch_size=32 \
+            data.max_prompt_length=4096 \
+            data.max_response_length=1024 \
+            data.filter_overlong_prompts=True \
+            data.truncation=middle \
+            data.return_raw_chat=True \
+            \
+            env.env_name=bidding \
+            env.seed=0 \
+            env.rollout.n=${GROUP_SIZE} \
+            env.rollout.val_n=1 \
+            \
+            agent.agent_ids="${AGENT_IDS}" \
+            agent.model_ids="${MODEL_IDS}" \
+            agent.model_sharing=${MODEL_SHARING} \
+            agent.orchestra_type=${ORCHESTRA_TYPE} \
+            agent.orchestra.bidding.max_bids=${MAX_BIDS} \
+            agent.orchestra.bidding.collusion_penalty_coef=${COLLUSION_PENALTY} \
+            \
+            actor_rollout_ref.model.path=null \
+            actor_rollout_ref.actor.optim.lr=null \
+            +agent.agent_specific_parameters.actor.optim.lr="${LR}" \
+            actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=null \
+            +agent.agent_specific_parameters.actor.ppo_micro_batch_size_per_gpu="${MICRO_BS}" \
+            actor_rollout_ref.actor.use_kl_loss=False \
+            actor_rollout_ref.actor.entropy_coeff=0.01 \
+            actor_rollout_ref.actor.use_invalid_action_penalty=False \
+            actor_rollout_ref.model.use_remove_padding=True \
+            actor_rollout_ref.model.enable_gradient_checkpointing=True \
+            actor_rollout_ref.actor.fsdp_config.param_offload=False \
+            actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
+            actor_rollout_ref.rollout.name=sglang \
+            actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+            actor_rollout_ref.rollout.gpu_memory_utilization=0.45 \
+            actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=8 \
+            actor_rollout_ref.rollout.val_kwargs.do_sample=True \
+            actor_rollout_ref.rollout.val_kwargs.temperature=0.7 \
+            actor_rollout_ref.rollout.val_kwargs.top_p=0.9 \
+            \
+            trainer.critic_warmup=0 \
+            trainer.n_gpus_per_node=4 \
+            trainer.nnodes=1 \
+            trainer.total_epochs=3 \
+            trainer.save_freq=50 \
+            trainer.test_freq=10 \
+            trainer.val_before_train=True \
+            trainer.logger='["console","wandb"]' \
+            trainer.project_name=DrMAS_bidding \
+            trainer.experiment_name="${EXPERIMENT_NAME}"
+        ```
+
+    7.2 Run training
+
+        ```
+        bash examples/bidding_trainer/run_bidding.sh
+        ```
+
+    7.3 Run evaluation
+
+        ```
+        bash examples/bidding_trainer/run_bidding.sh eval
+        ```
