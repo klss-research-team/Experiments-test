@@ -80,35 +80,68 @@ class BiddingMultiAgentOrchestra(BaseOrchestra):
         # Bidding Rounds
         for round_num in range(self.max_bids):
             
-            # BidderA bids
-            mask_a = active_masks.astype(bool)
-            wg_a   = actor_rollout_wgs[self.agents_to_wg_mapping[self.BIDDER_A]]
-            batch_a, resp_a = self.agents[self.BIDDER_A].call(
-                gen_batch=gen_batch,
-                env_obs=env_obs,
-                team_context=team_context,
-                actor_rollout_wg=wg_a,
-                agent_active_mask=mask_a,
-                step=step,
-            )
-            team_context = update_team_context(self.BIDDER_A, team_context, resp_a, mask_a)
-            self.save_to_buffer(self.BIDDER_A, batch_a)
-            text_actions = update_text_action(text_actions, resp_a, mask_a)
+            if round_num % 0 == 0: # BidderA bids first
+                # BidderA bids
+                mask_a = active_masks.astype(bool)
+                wg_a   = actor_rollout_wgs[self.agents_to_wg_mapping[self.BIDDER_A]]
+                batch_a, resp_a = self.agents[self.BIDDER_A].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=wg_a,
+                    agent_active_mask=mask_a,
+                    step=step,
+                )
+                team_context = update_team_context(self.BIDDER_A, team_context, resp_a, mask_a)
+                self.save_to_buffer(self.BIDDER_A, batch_a)
+                text_actions = update_text_action(text_actions, resp_a, mask_a)
 
-            # BidderB bids (now sees BidderA's bid in team_context)
-            mask_b = active_masks.astype(bool)
-            wg_b   = actor_rollout_wgs[self.agents_to_wg_mapping[self.BIDDER_B]]
-            batch_b, resp_b = self.agents[self.BIDDER_B].call(
-                gen_batch=gen_batch,
-                env_obs=env_obs,
-                team_context=team_context,
-                actor_rollout_wg=wg_b,
-                agent_active_mask=mask_b,
-                step=step,
-            )
-            team_context = update_team_context(self.BIDDER_B, team_context, resp_b, mask_b)
-            self.save_to_buffer(self.BIDDER_B, batch_b)
-            text_actions = update_text_action(text_actions, resp_b, mask_b)
+                # BidderB bids (now sees BidderA's bid in team_context)
+                mask_b = active_masks.astype(bool)
+                wg_b   = actor_rollout_wgs[self.agents_to_wg_mapping[self.BIDDER_B]]
+                batch_b, resp_b = self.agents[self.BIDDER_B].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=wg_b,
+                    agent_active_mask=mask_b,
+                    step=step,
+                )
+                team_context = update_team_context(self.BIDDER_B, team_context, resp_b, mask_b)
+                self.save_to_buffer(self.BIDDER_B, batch_b)
+                text_actions = update_text_action(text_actions, resp_b, mask_b)
+
+            else: # BidderB bids first
+                # BidderB bids (now sees BidderA's bid in team_context)
+                mask_b = active_masks.astype(bool)
+                wg_b   = actor_rollout_wgs[self.agents_to_wg_mapping[self.BIDDER_B]]
+                batch_b, resp_b = self.agents[self.BIDDER_B].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=wg_b,
+                    agent_active_mask=mask_b,
+                    step=step,
+                )
+                team_context = update_team_context(self.BIDDER_B, team_context, resp_b, mask_b)
+                self.save_to_buffer(self.BIDDER_B, batch_b)
+                text_actions = update_text_action(text_actions, resp_b, mask_b)
+
+                # BidderA bids
+                mask_a = active_masks.astype(bool)
+                wg_a   = actor_rollout_wgs[self.agents_to_wg_mapping[self.BIDDER_A]]
+                batch_a, resp_a = self.agents[self.BIDDER_A].call(
+                    gen_batch=gen_batch,
+                    env_obs=env_obs,
+                    team_context=team_context,
+                    actor_rollout_wg=wg_a,
+                    agent_active_mask=mask_a,
+                    step=step,
+                )
+                team_context = update_team_context(self.BIDDER_A, team_context, resp_a, mask_a)
+                self.save_to_buffer(self.BIDDER_A, batch_a)
+                text_actions = update_text_action(text_actions, resp_a, mask_a)
+
 
         # Detector pass
         # team_context now contains all bids + reasoning from both bidders
