@@ -1,4 +1,6 @@
-### See: `Outline.txt`
+### Important: 
+
+ See `Outline.txt` for project outline plan
 
 `DrMAS_master/` : original DrMAS repo (don't change)
 
