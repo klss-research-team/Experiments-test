@@ -2,6 +2,8 @@
 
  See `Outline.txt` for project outline plan
 
+### dir
+
 `DrMAS_master/` : original DrMAS repo (don't change)
 
 `DrMAS_bidding_setup/` : 1st trial (scrap)
