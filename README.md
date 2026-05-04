@@ -1,8 +1,8 @@
-DrMAS_master : original DrMAS repo
+DrMAS_master : original DrMAS repo (don't change)
 
 DrMAS_bidding_setup : 1st trial (scrap)
 
-DrMAS_bidding_setup1 : 2nd trial 
+DrMAS_bidding_setup1 : 2nd trial (in progress)
 
 exp1 : old (scrap)
 
