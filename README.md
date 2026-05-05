@@ -1,9 +1,15 @@
-DrMAS_master : original DrMAS repo (don't change)
+### Important: 
 
-DrMAS_bidding_setup : 1st trial (scrap)
+ See `Outline.txt` for project outline plan
 
-DrMAS_bidding_setup1 : 2nd trial (in progress)
+### dir
 
-exp1 : old (scrap)
+`DrMAS_master/` : original DrMAS repo (don't change)
 
-exp2 : old (scrap)
+`DrMAS_bidding_setup/` : 1st trial (scrap)
+
+`DrMAS_bidding_setup1/` : 2nd trial (in progress)
+
+`exp1/` : old (scrap)
+
+`exp2/` : old (scrap)
