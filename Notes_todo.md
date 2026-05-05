@@ -87,6 +87,6 @@ Make a new file `agent_system/environments/env_package/bidding/bidding_reward`
 
   create 2 classes: `BidderReward` and `DetectorReward`. Initialize with `self.config=config` using configs from `@dataclass` `class RewardConfig`. Test/debug using `main()` function in that same file.
 
-  Define the `__call__(self, action)` method, then return the reward (parsed + caculated). Do the same for the detector reward, which will calculate the total detector reward.
+  Define the `__call__(self, task_info, action)` method, then return the reward (parsed + caculated). Do the same for the detector reward, which will calculate the total detector reward.
 
 
