@@ -20,7 +20,9 @@ If we decide to subclass custom memory module, we have to add line `from .memory
 
 In `agent_system/environments/env_manager.py`, we need to subclass `class BiddingEnvironmentManager(EnvironmentManagerBase)` and update the function `def make_envs(config)` to include our new bidding environment.
 
-We probably don't have to add new file in `agent_system/agent/utils.py`. The provided function `general_projection()` should suffice since it filters responses using start/end tag. Though I am not sure how we will adapt to their usage of `"<think>"` and `"</think>"` tags.
+We probably don't have to add new file in `agent_system/agent/utils.py`. There is a provided `general_projection()` function, but it's probably not useful for us. UPDATE: I decided to add 2 new projection functions: `bidding_projection()` and `detector_projection()` to handle parsing of the LLM outputs. `bidding_projection()` is used in `envs.py` when initializing the environment and `detector_projection()` will be used later in the detector/judge/orchestrator code.
+
+The provided function `general_projection()` should suffice since it filters responses using start/end tag. Though I am not sure how we will adapt to their usage of `"<think>"` and `"</think>"` tags.
 
 Create new folder called `agent_system/agent/agents/bidding/` and add the files:
 
