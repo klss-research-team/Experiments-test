@@ -14,3 +14,5 @@
 # limitations under the License.
 
 from .memory import SimpleMemory, SearchMemory
+
+from .memory import BiddingMemory

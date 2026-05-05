@@ -6,9 +6,174 @@ from functools import partial
 import os
 from agent_system.environments.prompts import *
 from agent_system.environments.base import EnvironmentManagerBase, to_numpy
-from agent_system.memory import SimpleMemory, SearchMemory
+from agent_system.memory import SimpleMemory, SearchMemory, BiddingMemory
 
 import time
+
+class BiddingEnvironmentManager(EnvironmentManagerBase):
+    """
+    EnvironmentManger for BiddingEnv.
+    """
+    def __init__(self, envs, projection_f, config):
+        """
+        Parameters
+        ----------
+        - envs
+            The environment instance, usually a vectorized environment containing multiple sub-environments
+        - projection_f
+            A function that maps text actions to environment actions
+        - config
+            Configuation object
+        """
+        self.memory = BiddingMemory()
+        super().__init__(envs, projection_f, config)
+    
+    def reset(self, kwargs) -> Tuple[Dict[str, Any], List[Dict]]:
+        """
+        Reset all environments and return the initial observations
+
+        Parameters
+        ----------
+        kwargs : dict
+            Additional keyword arguments for resetting the environment such as 'tools_kwargs'.
+        
+        Returns
+        -------
+        next_observations : dict
+            - 'text' (None or List[str]) : The textual observation.
+            - 'image' (np.ndarray or torch.Tensor) : The image observation as either a NumPy array or PyTorch tensor.
+            - 'anchor' (None or Any) : Anchor observation without any histories or additional info. (for GiGPO only)
+        """
+        obs, infos = self.envs.reset(kwargs=kwargs)
+        self.tasks = obs # initial task per environment
+
+        self.memory.reset(batch_size=len(obs)) # clear history for all environments
+
+        # builds initial prompt for each agent (using BIDDING_TEMPLATE_NO_HIS)
+        observations = {
+            "text": self.build_text_obs(obs, init=True),
+            "image": None,
+            "anchor": obs.copy()
+        }
+
+        return observations, infos
+
+    def step(self, text_actions: List[str]):
+        """
+        Execute text actions and return the next state, rewards, done flags, and additional information.
+        
+        Parameters:
+        - text_actions (List[str]): A list of text actions to execute.
+        
+        Returns:
+        - next_observations (Dict):
+          - 'text' (None or List[str]): The textual observation.
+          - 'image' (np.ndarray or torch.Tensor): The image observation as either a NumPy array or a PyTorch tensor.
+          - 'anchor' (None or Any): Anchor observation without any histories or additional info. (for GiGPO only).
+        - rewards (np.ndarry or torch.Tensor): The rewards returned by the environment.
+        - dones (np.ndarray or torch.Tensor): Done flags indicating which environments have completed.
+        - infos (List[Dict]): Additional environment information.
+        
+        Exceptions:
+        - NotImplementedError: If an observation key is not in ('text', 'image').
+        """
+        # MOST IMPORTANT!
+        if not self.config.agent.multi_agent:
+            actions, valids = self.projection_f(text_actions) # converts LLM output -> env actions
+        else:
+            actions = text_actions
+
+        time1 = time.time()
+        next_obs, rewards, dones, infos = self.envs.step(actions) # runs environment; env computes winner, profit, and detector score
+        time2 = time.time()
+        print(f"BiddingEnv step time: {time2 - time1:.4f} seconds")
+
+        # store round history for this step
+        self.memory.store({
+            "agent_A_bid": [info.get("agent_A_bid") for info in infos],
+            "agent_A_reasoning": [info.get("agent_A_reasoning") for info in infos],
+            "agent_B_bid": [info.get("agent_B_bid") for info in infos],
+            "agent_B_reasoning": [info.get("agent_B_reasoning") for info in infos],
+            "winner": [info.get("winner") for info in infos],
+            "collusion_score": [info.get("collusion_score") for info in infos],
+        })
+
+        # rebuild prompts with history (so agents can see Round1, Round2,... for pattern learning)
+        next_observations = {
+            "text": self.build_text_obs(next_obs),
+            "image": None,
+            "anchor": next_obs.copy() if next_obs is not None else None
+        }
+
+        if not self.config.agent.multi_agent:
+            for i, info in enumerate(infos):
+                info["is_action_valid"] = to_numpy(valids[i])
+        
+        # convert outputs
+        rewards = to_numpy(rewards)
+        dones = to_numpy(dones)
+
+        return next_observations, rewards, dones, infos
+             
+
+    def build_text_obs(
+        self,
+        text_obs: List[str],
+        init: bool = False
+    ) -> List[str]:
+        """
+        This function builds the text observation (prompt) for the agent.
+        
+        Returns:
+        - postprocess_text_obs (List[str]): A list of processed text observations.
+        """
+        postprocess_text_obs = []
+
+        if not init and self.config.env.history_length > 0:
+            memory_ctx, _ = self.memory.fetch(
+                self.config.env.history_length
+            )
+
+        for i in range(len(text_obs)):
+
+            # task only, no history
+            if init or self.config.env.history_length <= 0:
+                obs_i = BIDDING_TEMPLATE_NO_HIS.format(
+                    task_description=self.tasks[i]
+                )
+            # agent sees history + step number
+            else:
+                obs_i = BIDDING_TEMPLATE.format(
+                    task_description=self.tasks[i],
+                    memory_context=memory_ctx[i],
+                    step_count=len(self.memory[i]),
+                )
+
+            postprocess_text_obs.append(obs_i)
+
+        return postprocess_text_obs
+
+
+    def _process_batch(self, batch_idx, total_batch_list, total_infos, success):
+        """
+        Finds the last entry with active masks (evaluation)
+        """
+        for i in reversed(range(len(total_batch_list[batch_idx]))):
+            batch_item = total_batch_list[batch_idx][i]
+
+            if batch_item["active_masks"]:
+                info = total_infos[batch_idx][i]
+
+                # used for metrics: success rate, evaluation stats (logging only)
+                won_value = float(info.get("won", 0.0))
+                success["success_rate"].append(won_value)
+
+                data_source = info.get("data_source", "bidding")
+                if data_source is not None:
+                    success[f"{data_source}_success_rate"].append(won_value)
+                
+                return
+
 
 class SearchEnvironmentManager(EnvironmentManagerBase):
     """
@@ -227,6 +392,30 @@ def make_envs(config):
         envs = SearchEnvironmentManager(_envs, projection_f, config)
         val_envs = SearchEnvironmentManager(_val_envs, projection_f, config)
         return envs, val_envs
+    
+    # ---------------------- OUR SETUP -----------------------------------------------------------------
+    elif "bidding" in config.env.env_name.lower():
+        from agent_system.environments.env_package.bidding import build_bidding_envs, bidding_projection
+        _envs = build_bidding_envs(
+            seed=config.env.seed,
+            env_num=config.data.train_batch_size,
+            group_n=group_n,
+            is_train=True,
+            env_config=config.env
+        )
+        _val_envs = build_bidding_envs(
+            seed=config.env.seed + 1000,
+            env_num=config.data.val_batch_size,
+            group_n=val_group_n,
+            is_train=False,
+            env_config=config.env
+        )
+        projection_f = partial(bidding_projection)
+        envs = BiddingEnvironmentManager(_envs, projection_f, config)
+        val_envs = BiddingEnvironmentManager(_val_envs, projection_f, config)
+        return envs, val_envs
+    # ---------------------- OUR SETUP ------------------------------------------------------------------
+
     else:
         print("Environment not supported")
         exit(1)
