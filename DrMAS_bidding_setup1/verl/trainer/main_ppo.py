@@ -147,6 +147,7 @@ class TaskRunner:
         if reward_manager_name == 'episode':
             from agent_system.reward_manager.episode import EpisodeRewardManager
             reward_manager_cls = EpisodeRewardManager
+        # TODO: add BiddingRewardManager
         else:
             raise NotImplementedError
 
