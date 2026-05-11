@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python smoke_test_bidding.py)",
+      "Bash(python -c \"import sys; print\\(sys.stdout.encoding\\)\")"
+    ]
+  }
+}
