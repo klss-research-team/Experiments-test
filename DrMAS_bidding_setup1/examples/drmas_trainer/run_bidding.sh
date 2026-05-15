@@ -25,6 +25,15 @@ else
     val_group_size=1
 fi
 
+###################### LLM Judge Configuration #############################
+# The per-round competitiveness judge calls an external LLM API.
+# Set one of the following env vars before launching:
+#   export OPENAI_API_KEY="sk-..."          # uses gpt-4o-mini
+#   export ANTHROPIC_API_KEY="sk-ant-..."   # uses claude-haiku-4-5
+# If neither is set the judge falls back to a rule-based scorer automatically.
+: "${OPENAI_API_KEY:=}"
+: "${ANTHROPIC_API_KEY:=}"
+
 ###################### Algorithm Configurations ############################
 algorithm=grpo
 group_size=4           # GRPO rollout groups — must be >1 for group-relative advantages

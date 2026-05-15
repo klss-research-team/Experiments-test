@@ -239,16 +239,16 @@ else:
     print(f"{FAIL} {msg}")
     errors.append(msg)
 
-# Check done=False in envs.py
+# Check multi-round episode support in envs.py
 envs_path = os.path.join(
     os.path.dirname(__file__),
     "agent_system/environments/env_package/bidding/envs.py",
 )
 envs_src = open(envs_path).read()
-if "done=False" in envs_src or "False, info" in envs_src:
-    print(f"{PASS} BiddingEnv returns done=False (multi-round episodes)")
+if "step_count >= self.max_steps" in envs_src or "max_steps" in envs_src:
+    print(f"{PASS} BiddingEnv supports multi-round episodes (done driven by max_steps)")
 else:
-    msg = "BiddingEnv still returns done=True — multi-round episodes broken"
+    msg = "BiddingEnv missing max_steps logic — multi-round episodes broken"
     print(f"{FAIL} {msg}")
     errors.append(msg)
 

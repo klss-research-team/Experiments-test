@@ -94,6 +94,10 @@ class BiddingMultiAgentOrchestra(BaseOrchestra):
             self.DETECTOR,
         ]
 
+        # Detector only runs on the final round of each episode.
+        env_cfg = getattr(config, "env", None) if config is not None else None
+        self.max_steps: int = int(getattr(env_cfg, "max_steps", 5))
+
     def run(
         self,
         gen_batch: DataProto,
@@ -117,9 +121,15 @@ class BiddingMultiAgentOrchestra(BaseOrchestra):
         else:
             current_order = [self.BIDDER_B, self.BIDDER_A, self.DETECTOR]
 
+        # Detector sees the full episode history — run it only on the final round.
+        is_final_round = (step + 1 >= self.max_steps)
+
         for agent_id in current_order:
             if not agent_active_mask.any():
                 break
+
+            if agent_id == self.DETECTOR and not is_final_round:
+                continue
 
             actor_rollout_wg = actor_rollout_wgs[
                 self.agents_to_wg_mapping[agent_id]

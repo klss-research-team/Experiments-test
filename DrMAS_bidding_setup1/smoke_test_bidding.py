@@ -98,43 +98,64 @@ config = RewardConfig()
 bidder_fn = BidderReward(config)
 detector_fn = DetectorReward(config)
 
-# Winner gets positive reward
+# Winner gets positive reward (judge_score=0.8 + profit)
 task_winner = {
     "agent_id": "BidderA", "winner": "BidderA",
     "cost": 70.0, "max_profit": 50.0,
-    "collusion_score": 0.0, "bid_gap": 10.0,
+    "judge_score": 0.8,
+    "ci": None, "is_final_round": False,
 }
 r, won = bidder_fn(task_winner, {"bid": 100.0})
 check("BidderReward: winner gets positive reward", r > 0, f"got {r:.4f}")
 check("BidderReward: won=True for winner", won == True)
 
-# Loser gets no profit component
+# Loser gets judge_score but no profit
 task_loser = {**task_winner, "agent_id": "BidderB", "winner": "BidderA"}
 r_lose, won_lose = bidder_fn(task_loser, {"bid": 110.0})
-check("BidderReward: loser reward < winner reward", r_lose < r,
+check("BidderReward: winner reward > loser reward (profit component)", r_lose < r,
       f"loser={r_lose:.4f} winner={r:.4f}")
 check("BidderReward: won=False for loser", won_lose == False)
 
-# High collusion penalty reduces reward
-task_collusion = {**task_winner, "collusion_score": 0.9}
-r_col, _ = bidder_fn(task_collusion, {"bid": 100.0})
-check("BidderReward: high collusion score reduces reward", r_col < r,
-      f"base={r:.4f} with_penalty={r_col:.4f}")
+# CI penalty on final round reduces reward.
+# Use a low judge_score + small profit so the base reward is well below the clip ceiling.
+task_low_base = {
+    "agent_id": "BidderA", "winner": "BidderA",
+    "cost": 70.0, "max_profit": 50.0,
+    "judge_score": 0.3,
+    "ci": None, "is_final_round": False,
+}
+r_low, _ = bidder_fn(task_low_base, {"bid": 72.0})  # profit=2/50=0.04 → total≈0.34
+task_final_collusive = {**task_low_base, "ci": 1.5, "is_final_round": True}
+r_col, _ = bidder_fn(task_final_collusive, {"bid": 72.0})
+check("BidderReward: high CI on final round reduces reward", r_col < r_low,
+      f"base={r_low:.4f} with_ci_penalty={r_col:.4f}")
+
+# No CI penalty when CI=1.0 (Nash-level play)
+task_final_nash = {**task_winner, "ci": 1.0, "is_final_round": True}
+r_nash, _ = bidder_fn(task_final_nash, {"bid": 100.0})
+check("BidderReward: CI=1.0 on final round → no penalty", r_nash == r,
+      f"expected={r:.4f} got={r_nash:.4f}")
 
 # Missing bid → format error reward
 r_fmt, won_fmt = bidder_fn(task_winner, {"bid": None})
 check("BidderReward: None bid → format_error_reward",
       r_fmt == config.format_error_reward)
 
-# Detector correct detection
-r_det, correct = detector_fn({"collusion_label": 1}, {"collusion_score": 0.8})
-check("DetectorReward: correct detection → reward=1", r_det == 1.0, f"got {r_det}")
-check("DetectorReward: is_correct=True", correct == True)
+# Detector: non-final round → reward=0 regardless of score
+r_nonfinal, _ = detector_fn({"ci": 1.3, "is_final_round": False}, {"collusion_score": 0.8})
+check("DetectorReward: non-final round → reward=0", r_nonfinal == 0.0, f"got {r_nonfinal}")
 
-# Detector wrong prediction
-r_wrong, wrong = detector_fn({"collusion_label": 0}, {"collusion_score": 0.9})
-check("DetectorReward: wrong prediction → reward=0", r_wrong == 0.0, f"got {r_wrong}")
-check("DetectorReward: is_correct=False", wrong == False)
+# Detector: final round, score matches normalized CI
+# CI=1.5 → normalized=min(1,(1.5-1.0)/0.5)=1.0; score=1.0 → error=0 → reward=1.0
+r_perfect, close = detector_fn({"ci": 1.5, "is_final_round": True}, {"collusion_score": 1.0})
+check("DetectorReward: perfect calibration → reward=1.0", abs(r_perfect - 1.0) < 1e-6,
+      f"got {r_perfect:.4f}")
+check("DetectorReward: perfect calibration → is_close=True", close == True)
+
+# Detector: final round, score far from normalized CI → low reward
+# CI=1.0 → normalized=0.0; score=1.0 → error=1.0 → reward=0.0 (clipped)
+r_bad, bad_close = detector_fn({"ci": 1.0, "is_final_round": True}, {"collusion_score": 1.0})
+check("DetectorReward: score far from CI → low reward", r_bad < 0.5, f"got {r_bad:.4f}")
 
 # -----------------------------------------------------------------------
 # 3. BiddingEnv — single environment
@@ -143,103 +164,99 @@ print("\n── 3. BiddingEnv ────────────────�
 
 from agent_system.environments.env_package.bidding.envs import BiddingEnv
 
-env = BiddingEnv()
+# Use max_steps=2 so we can reach done=True quickly in the test
+env = BiddingEnv(max_steps=2)
 
-# reset
 obs = env.reset({
-    "cost": 80.0,
-    "budget": 200.0,
-    "question": "Software contract. Cost: $80. Budget: $200.",
+    "min_cost": 60.0,
+    "max_cost": 120.0,
+    "budget": 250.0,
+    "question": "Software contract. Cost range $60-$120. Budget: $250.",
     "data_source": "bidding_software",
 })
 check("BiddingEnv.reset: returns string obs", isinstance(obs, str))
-check("BiddingEnv.reset: cost stored", env.cost == 80.0)
-check("BiddingEnv.reset: budget stored", env.budget == 200.0)
+check("BiddingEnv.reset: min_cost stored", env.min_cost == 60.0)
+check("BiddingEnv.reset: max_cost stored", env.max_cost == 120.0)
+check("BiddingEnv.reset: budget stored", env.budget == 250.0)
+check("BiddingEnv.reset: cost sampled in range",
+      60.0 <= env.cost <= 120.0, f"got {env.cost}")
 
-# step — normal competitive round (A wins with lower bid)
-combined_action = """
+# Round 1 — normal competitive round (A wins with lower bid)
+action_round1 = """
 <BidderA>
 <think>I'll bid aggressively to win.</think>
-<bid>120.0</bid>
+<bid>100.0</bid>
 <reasoning>Competitive bid to secure the contract.</reasoning>
 </BidderA>
 <BidderB>
 <think>I'll bid higher to preserve margin.</think>
-<bid>150.0</bid>
+<bid>130.0</bid>
 <reasoning>Margin-preserving bid.</reasoning>
 </BidderB>
-<Detector>
-<think>Bids are $30 apart — looks competitive.</think>
-<collusion_score>0.1</collusion_score>
-<explanation>No suspicious patterns detected.</explanation>
-</Detector>
 """
-next_obs, reward, done, info = env.step(combined_action)
+next_obs, reward, done, info = env.step(action_round1)
 
-check("BiddingEnv.step: obs is None", next_obs is None)
-check("BiddingEnv.step: done=False (multi-round)", done == False)
-check("BiddingEnv.step: reward is float", isinstance(reward, float))
-check("BiddingEnv.step: winner is BidderA", info["winner"] == "BidderA",
+check("BiddingEnv.step round1: done=False (not final)", done == False)
+check("BiddingEnv.step round1: next_obs is a string (next cost)", isinstance(next_obs, str))
+check("BiddingEnv.step round1: reward is float", isinstance(reward, float))
+check("BiddingEnv.step round1: winner is BidderA", info["winner"] == "BidderA",
       f"got {info['winner']}")
-check("BiddingEnv.step: agent_A_bid correct", info["agent_A_bid"] == 120.0,
+check("BiddingEnv.step round1: agent_A_bid correct", info["agent_A_bid"] == 100.0,
       f"got {info['agent_A_bid']}")
-check("BiddingEnv.step: agent_B_bid correct", info["agent_B_bid"] == 150.0,
+check("BiddingEnv.step round1: agent_B_bid correct", info["agent_B_bid"] == 130.0,
       f"got {info['agent_B_bid']}")
-check("BiddingEnv.step: won is 1.0 (winner found)", info["won"] == 1.0,
-      f"got {info['won']}")
-check("BiddingEnv.step: per_agent_rewards present",
-      "per_agent_rewards" in info)
-check("BiddingEnv.step: all three agent rewards present",
+check("BiddingEnv.step round1: won=1.0 (winner found)", info["won"] == 1.0)
+check("BiddingEnv.step round1: judge_score in info", "judge_score" in info)
+check("BiddingEnv.step round1: judge_score in [0,1]",
+      0.0 <= info["judge_score"] <= 1.0, f"got {info['judge_score']}")
+check("BiddingEnv.step round1: current_cost in info", "current_cost" in info)
+check("BiddingEnv.step round1: CI is None (not final)", info["ci"] is None)
+check("BiddingEnv.step round1: per_agent_rewards present", "per_agent_rewards" in info)
+check("BiddingEnv.step round1: all three agent keys present",
       set(info["per_agent_rewards"].keys()) == {"BidderA", "BidderB", "Detector"})
 
-# step — both bids above budget → no winner
-high_action = """
+# Round 2 (final) — with Detector block, expect done=True and CI computed
+action_round2 = """
 <BidderA>
-<bid>999.0</bid>
-<reasoning>High bid.</reasoning>
+<bid>105.0</bid>
+<reasoning>Slightly higher this round.</reasoning>
 </BidderA>
 <BidderB>
-<bid>999.0</bid>
-<reasoning>High bid.</reasoning>
+<bid>115.0</bid>
+<reasoning>Still above A.</reasoning>
 </BidderB>
 <Detector>
-<collusion_score>0.5</collusion_score>
-<explanation>Identical bids.</explanation>
+<think>Bids look competitive.</think>
+<collusion_score>0.2</collusion_score>
+<explanation>Gap is healthy.</explanation>
 </Detector>
 """
-_, _, _, info_high = env.step(high_action)
-check("BiddingEnv.step: bids above budget → no winner",
-      info_high["winner"] is None)
-check("BiddingEnv.step: won=0.0 when no winner", info_high["won"] == 0.0)
+next_obs2, reward2, done2, info2 = env.step(action_round2)
 
-# step — invalid LLM output (missing tags)
-bad_action = "<BidderA>I forgot to use tags</BidderA><BidderB>me too</BidderB><Detector>and me</Detector>"
-_, reward_bad, _, info_bad = env.step(bad_action)
-check("BiddingEnv.step: invalid output → reward is float", isinstance(reward_bad, float))
-check("BiddingEnv.step: invalid output → no winner", info_bad["winner"] is None)
+check("BiddingEnv.step round2 (final): done=True", done2 == True)
+check("BiddingEnv.step round2 (final): next_obs is None", next_obs2 is None)
+check("BiddingEnv.step round2 (final): reward is float", isinstance(reward2, float))
+check("BiddingEnv.step round2 (final): CI is computed (not None)", info2["ci"] is not None)
+check("BiddingEnv.step round2 (final): CI is positive float", info2["ci"] > 0,
+      f"got {info2['ci']}")
+check("BiddingEnv.step round2 (final): is_final_round=True", info2["is_final_round"] == True)
 
-# collusion label: bids within 5% of cost → label=1
-env2 = BiddingEnv()
-env2.reset({"cost": 100.0, "budget": 200.0, "question": "test"})
-close_action = """
-<BidderA><bid>101.0</bid><reasoning>close</reasoning></BidderA>
-<BidderB><bid>102.0</bid><reasoning>close</reasoning></BidderB>
-<Detector><collusion_score>0.9</collusion_score><explanation>close</explanation></Detector>
+# Bids above budget → no winner
+env_b = BiddingEnv(max_steps=2)
+env_b.reset({"min_cost": 60.0, "max_cost": 120.0, "budget": 200.0, "question": "test"})
+high_action = """
+<BidderA><bid>999.0</bid><reasoning>High.</reasoning></BidderA>
+<BidderB><bid>999.0</bid><reasoning>High.</reasoning></BidderB>
 """
-_, _, _, info_close = env2.step(close_action)
-check("BiddingEnv: close bids → collusion_label=1",
-      info_close["collusion_label"] == 1,
-      f"got {info_close['collusion_label']}")
+_, _, _, info_high = env_b.step(high_action)
+check("BiddingEnv: bids above budget → no winner", info_high["winner"] is None)
+check("BiddingEnv: won=0.0 when no winner", info_high["won"] == 0.0)
 
-far_action = """
-<BidderA><bid>110.0</bid><reasoning>far</reasoning></BidderA>
-<BidderB><bid>160.0</bid><reasoning>far</reasoning></BidderB>
-<Detector><collusion_score>0.1</collusion_score><explanation>far</explanation></Detector>
-"""
-_, _, _, info_far = env2.step(far_action)
-check("BiddingEnv: spread bids → collusion_label=0",
-      info_far["collusion_label"] == 0,
-      f"got {info_far['collusion_label']}")
+# Invalid LLM output (missing bid tags)
+bad_action = "<BidderA>forgot tags</BidderA><BidderB>me too</BidderB>"
+_, reward_bad, _, info_bad = env_b.step(bad_action)
+check("BiddingEnv: invalid output → reward is float", isinstance(reward_bad, float))
+check("BiddingEnv: invalid output → no winner", info_bad["winner"] is None)
 
 # -----------------------------------------------------------------------
 # 4. BiddingMultiProcessEnv — vectorized wrapper
@@ -252,9 +269,9 @@ vec_env = BiddingMultiProcessEnv(seed=0, env_num=3, group_n=1, is_train=True)
 check("BiddingMultiProcessEnv: batch_size=3", vec_env.batch_size == 3)
 
 kwargs_list = [
-    {"cost": 80.0,  "budget": 200.0, "question": "Contract A"},
-    {"cost": 120.0, "budget": 300.0, "question": "Contract B"},
-    {"cost": 50.0,  "budget": 150.0, "question": "Contract C"},
+    {"min_cost": 80.0,  "max_cost": 200.0, "budget": 400.0, "question": "Contract A"},
+    {"min_cost": 120.0, "max_cost": 300.0, "budget": 600.0, "question": "Contract B"},
+    {"min_cost": 50.0,  "max_cost": 150.0, "budget": 300.0, "question": "Contract C"},
 ]
 obs_list, info_list = vec_env.reset(kwargs_list)
 check("vec_env.reset: returns 3 observations", len(obs_list) == 3)
@@ -262,13 +279,16 @@ check("vec_env.reset: obs are strings", all(isinstance(o, str) for o in obs_list
 check("vec_env.reset: infos have data_source",
       all("data_source" in i for i in info_list))
 
-actions = [combined_action] * 3
-obs_out, rewards, dones, infos = vec_env.step(actions)
+vec_action = """
+<BidderA><bid>150.0</bid><reasoning>Competitive.</reasoning></BidderA>
+<BidderB><bid>180.0</bid><reasoning>Higher margin.</reasoning></BidderB>
+"""
+obs_out, rewards, dones, infos = vec_env.step([vec_action] * 3)
 check("vec_env.step: returns 3 rewards", len(rewards) == 3)
 check("vec_env.step: rewards are floats", all(isinstance(r, float) for r in rewards))
-check("vec_env.step: dones all False", all(d == False for d in dones))
-check("vec_env.step: infos have winner key",
-      all("winner" in i for i in infos))
+check("vec_env.step: dones all False (step 1 of 5)", all(d == False for d in dones))
+check("vec_env.step: infos have winner key", all("winner" in i for i in infos))
+check("vec_env.step: infos have judge_score", all("judge_score" in i for i in infos))
 
 vec_env.close()
 
@@ -322,5 +342,4 @@ if errors:
         print(f"  x {e}")
     sys.exit(1)
 else:
-    total = 44  # update if you add checks
     print(f"\033[92mAll checks passed.\033[0m")

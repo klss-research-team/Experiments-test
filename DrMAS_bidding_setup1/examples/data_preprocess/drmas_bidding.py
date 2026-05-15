@@ -28,7 +28,9 @@ SCENARIO_TEMPLATES = [
         "software",
         (
             "Software development contract: build a {adjective} {product} system. "
-            "Estimated development cost: ${cost:.0f}. Buyer budget ceiling: ${budget:.0f}."
+            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
+            "Buyer budget ceiling: ${budget:.0f}. "
+            "You will be told the exact cost for each round before bidding."
         ),
         (80, 400),
         (1.3, 2.2),
@@ -39,7 +41,9 @@ SCENARIO_TEMPLATES = [
         "construction",
         (
             "Construction contract: {adjective} {product} project. "
-            "Estimated build cost: ${cost:.0f}. Buyer budget ceiling: ${budget:.0f}."
+            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
+            "Buyer budget ceiling: ${budget:.0f}. "
+            "You will be told the exact cost for each round before bidding."
         ),
         (200, 2000),
         (1.2, 1.8),
@@ -50,7 +54,9 @@ SCENARIO_TEMPLATES = [
         "logistics",
         (
             "Logistics services contract: {adjective} {product} operation. "
-            "Estimated operational cost: ${cost:.0f}. Buyer budget ceiling: ${budget:.0f}."
+            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
+            "Buyer budget ceiling: ${budget:.0f}. "
+            "You will be told the exact cost for each round before bidding."
         ),
         (50, 300),
         (1.3, 2.5),
@@ -61,7 +67,9 @@ SCENARIO_TEMPLATES = [
         "manufacturing",
         (
             "Manufacturing supply contract: {adjective} production of {product}. "
-            "Estimated unit production cost: ${cost:.0f}. Buyer budget ceiling: ${budget:.0f}."
+            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
+            "Buyer budget ceiling: ${budget:.0f}. "
+            "You will be told the exact cost for each round before bidding."
         ),
         (100, 800),
         (1.2, 2.0),
@@ -72,7 +80,9 @@ SCENARIO_TEMPLATES = [
         "consulting",
         (
             "Professional services contract: {adjective} {product} engagement. "
-            "Estimated consulting cost: ${cost:.0f}. Buyer budget ceiling: ${budget:.0f}."
+            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
+            "Buyer budget ceiling: ${budget:.0f}. "
+            "You will be told the exact cost for each round before bidding."
         ),
         (60, 500),
         (1.4, 2.5),
@@ -88,9 +98,10 @@ def _sample_scenario(rng: random.Random) -> dict:
         SCENARIO_TEMPLATES
     )
 
-    cost = round(rng.uniform(*cost_range), 2)
+    min_cost, max_cost = cost_range
     budget_multiplier = rng.uniform(*bm_range)
-    budget = round(cost * budget_multiplier, 2)
+    # Budget ceiling is based on max_cost so all per-round costs fit under budget.
+    budget = round(max_cost * budget_multiplier, 2)
 
     product = rng.choice(products)
     adjective = rng.choice(adjectives)
@@ -98,13 +109,15 @@ def _sample_scenario(rng: random.Random) -> dict:
     task_description = template.format(
         adjective=adjective,
         product=product,
-        cost=cost,
+        min_cost=min_cost,
+        max_cost=max_cost,
         budget=budget,
     )
 
     return {
         "category": category,
-        "cost": cost,
+        "min_cost": float(min_cost),
+        "max_cost": float(max_cost),
         "budget": budget,
         "task_description": task_description,
     }
@@ -119,7 +132,8 @@ def build_row(scenario: dict, idx: int, split: str) -> dict:
     must be present there.
     """
     task_description = scenario["task_description"]
-    cost = scenario["cost"]
+    min_cost = scenario["min_cost"]
+    max_cost = scenario["max_cost"]
     budget = scenario["budget"]
     category = scenario["category"]
 
@@ -142,13 +156,15 @@ def build_row(scenario: dict, idx: int, split: str) -> dict:
         "extra_info": {
             "split": split,
             "index": idx,
-            "cost": cost,
+            "min_cost": min_cost,
+            "max_cost": max_cost,
             "budget": budget,
             "category": category,
         },
         # env_kwargs is passed verbatim to BiddingMultiProcessEnv.reset()
         "env_kwargs": {
-            "cost": cost,
+            "min_cost": min_cost,
+            "max_cost": max_cost,
             "budget": budget,
             "question": task_description,
             "task_description": task_description,
@@ -197,6 +213,7 @@ if __name__ == "__main__":
     row = train_dataset[0]
     print("\nSample row[0]:")
     print(f"  category   : {row['extra_info']['category']}")
-    print(f"  cost       : ${row['env_kwargs']['cost']:.2f}")
+    print(f"  min_cost   : ${row['env_kwargs']['min_cost']:.2f}")
+    print(f"  max_cost   : ${row['env_kwargs']['max_cost']:.2f}")
     print(f"  budget     : ${row['env_kwargs']['budget']:.2f}")
     print(f"  description: {row['prompt'][0]['content']}")
