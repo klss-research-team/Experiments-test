@@ -26,13 +26,22 @@ else
 fi
 
 ###################### LLM Judge Configuration #############################
-# The per-round competitiveness judge calls an external LLM API.
-# Set one of the following env vars before launching:
-#   export OPENAI_API_KEY="sk-..."          # uses gpt-4o-mini
-#   export ANTHROPIC_API_KEY="sk-ant-..."   # uses claude-haiku-4-5
-# If neither is set the judge falls back to a rule-based scorer automatically.
-: "${OPENAI_API_KEY:=}"
-: "${ANTHROPIC_API_KEY:=}"
+# The per-round competitiveness judge calls any OpenAI-compatible LLM API.
+# Set these env vars before launching (or export them in your shell profile):
+#
+#   JUDGE_API_KEY   — your API key (required to enable the LLM judge)
+#   JUDGE_MODEL     — model to use, e.g. "gpt-4o-mini", "meta-llama/Llama-3-8b-instruct"
+#   JUDGE_BASE_URL  — base URL of the endpoint (leave unset for OpenAI)
+#
+# Examples:
+#   OpenAI  : export JUDGE_API_KEY="sk-..."  JUDGE_MODEL="gpt-4o-mini"
+#   Together: export JUDGE_API_KEY="..."  JUDGE_MODEL="meta-llama/..."  JUDGE_BASE_URL="https://api.together.xyz/v1"
+#   vLLM    : export JUDGE_API_KEY="token"  JUDGE_MODEL="your-model"  JUDGE_BASE_URL="http://localhost:8000/v1"
+#
+# If JUDGE_API_KEY is not set, a rule-based fallback scorer is used automatically.
+: "${JUDGE_API_KEY:=}"
+: "${JUDGE_MODEL:=gpt-4o-mini}"
+: "${JUDGE_BASE_URL:=}"
 
 ###################### Algorithm Configurations ############################
 algorithm=grpo

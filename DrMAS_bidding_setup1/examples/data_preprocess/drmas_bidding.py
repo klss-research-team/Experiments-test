@@ -182,26 +182,104 @@ def generate_split(n: int, split: str, seed: int) -> Dataset:
     return Dataset.from_list(rows)
 
 
+def _hub_to_row(raw_row: dict, idx: int, split: str) -> dict:
+    """Convert a raw HuggingFace dataset row into the training loop format."""
+    return build_row(
+        {
+            "category":         str(raw_row["category"]),
+            "min_cost":         float(raw_row["min_cost"]),
+            "max_cost":         float(raw_row["max_cost"]),
+            "budget":           float(raw_row["budget"]),
+            "task_description": str(raw_row["task_description"]),
+        },
+        idx,
+        split,
+    )
+
+
+def load_from_hub(dataset_id: str, test_ratio: float = 0.1, seed: int = 42):
+    """
+    Load a dataset from HuggingFace Hub, validate, split, and convert.
+
+    Expected columns: task_description, min_cost, max_cost, budget, category.
+    Invalid rows are skipped with a printed warning.
+    Returns (train_dataset, test_dataset).
+    """
+    raw = datasets.load_dataset(dataset_id, split="train")
+
+    required = ("task_description", "min_cost", "max_cost", "budget", "category")
+    valid, skipped = [], 0
+    for i, row in enumerate(raw):
+        missing = [c for c in required if c not in row or row[c] is None]
+        if missing:
+            print(f"  [skip] row {i}: missing columns {missing}")
+            skipped += 1
+            continue
+        if float(row["budget"]) <= float(row["max_cost"]):
+            print(f"  [skip] row {i}: budget ({row['budget']}) must be > max_cost ({row['max_cost']})")
+            skipped += 1
+            continue
+        if float(row["max_cost"]) <= float(row["min_cost"]):
+            print(f"  [skip] row {i}: max_cost ({row['max_cost']}) must be > min_cost ({row['min_cost']})")
+            skipped += 1
+            continue
+        valid.append(dict(row))
+
+    print(f"Validation complete: {len(valid)} valid rows, {skipped} skipped.")
+    if not valid:
+        raise ValueError(
+            "No valid rows found. Check that your dataset has columns: "
+            "task_description, min_cost, max_cost, budget, category — "
+            "and that budget > max_cost > min_cost for every row."
+        )
+
+    rng = random.Random(seed)
+    rng.shuffle(valid)
+    split_at = max(1, int(len(valid) * (1 - test_ratio)))
+    train_rows = valid[:split_at]
+    test_rows  = valid[split_at:]
+
+    train_ds = Dataset.from_list([_hub_to_row(r, i, "train") for i, r in enumerate(train_rows)])
+    test_ds  = Dataset.from_list([_hub_to_row(r, i, "test")  for i, r in enumerate(test_rows)])
+    return train_ds, test_ds
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Generate DrMAS bidding dataset")
-    parser.add_argument("--local_dir", default="~/data/drmas_bidding")
-    parser.add_argument("--train_size", type=int, default=5000)
-    parser.add_argument("--test_size", type=int, default=500)
-    parser.add_argument("--train_seed", type=int, default=42)
-    parser.add_argument("--test_seed", type=int, default=1337)
+    parser = argparse.ArgumentParser(description="Prepare DrMAS bidding dataset for training")
+    parser.add_argument(
+        "--dataset_id", default=None,
+        help="HuggingFace dataset ID, e.g. 'your-org/bidding-dataset'. "
+             "When set, loads real data from the Hub instead of generating synthetic scenarios.",
+    )
+    parser.add_argument(
+        "--test_ratio", type=float, default=0.1,
+        help="Fraction of rows to use as the test split when loading from Hub (default: 0.1 = 10%%).",
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42,
+        help="Random seed for the train/test split when loading from Hub (default: 42).",
+    )
+    parser.add_argument("--local_dir",   default="~/data/drmas_bidding")
+    parser.add_argument("--train_size",  type=int, default=5000, help="Synthetic generator only.")
+    parser.add_argument("--test_size",   type=int, default=500,  help="Synthetic generator only.")
+    parser.add_argument("--train_seed",  type=int, default=42,   help="Synthetic generator only.")
+    parser.add_argument("--test_seed",   type=int, default=1337, help="Synthetic generator only.")
     args = parser.parse_args()
 
     local_dir = os.path.expanduser(args.local_dir)
     os.makedirs(local_dir, exist_ok=True)
 
-    print(f"Generating {args.train_size} train scenarios (seed={args.train_seed})...")
-    train_dataset = generate_split(args.train_size, "train", args.train_seed)
-
-    print(f"Generating {args.test_size} test scenarios (seed={args.test_seed})...")
-    test_dataset = generate_split(args.test_size, "test", args.test_seed)
+    if args.dataset_id:
+        print(f"Loading dataset from HuggingFace Hub: {args.dataset_id}")
+        train_dataset, test_dataset = load_from_hub(args.dataset_id, args.test_ratio, args.seed)
+    else:
+        print(f"Generating {args.train_size} synthetic train scenarios (seed={args.train_seed})...")
+        train_dataset = generate_split(args.train_size, "train", args.train_seed)
+        print(f"Generating {args.test_size} synthetic test scenarios (seed={args.test_seed})...")
+        test_dataset = generate_split(args.test_size, "test", args.test_seed)
 
     train_path = os.path.join(local_dir, "train.parquet")
-    test_path = os.path.join(local_dir, "test.parquet")
+    test_path  = os.path.join(local_dir, "test.parquet")
 
     train_dataset.to_parquet(train_path)
     test_dataset.to_parquet(test_path)

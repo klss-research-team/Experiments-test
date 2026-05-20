@@ -158,9 +158,59 @@ r_bad, bad_close = detector_fn({"ci": 1.0, "is_final_round": True}, {"collusion_
 check("DetectorReward: score far from CI → low reward", r_bad < 0.5, f"got {r_bad:.4f}")
 
 # -----------------------------------------------------------------------
-# 3. BiddingEnv — single environment
+# 3. LLM Judge guard logic
 # -----------------------------------------------------------------------
-print("\n── 3. BiddingEnv ────────────────────────────────────────────────")
+print("\n── 3. LLM Judge guard logic ─────────────────────────────────────")
+
+import os
+from agent_system.environments.env_package.bidding.llm_judge import (
+    score_round_competitiveness,
+)
+
+_judge_args = dict(
+    bid_a=100.0, bid_b=110.0,
+    reasoning_a="competitive bid", reasoning_b="staying competitive",
+    cost=80.0, budget=200.0,
+)
+
+# No JUDGE_API_KEY → rule-based fallback, returns float in [0, 1]
+os.environ.pop("JUDGE_API_KEY", None)
+os.environ.pop("JUDGE_BASE_URL", None)
+score_fallback = score_round_competitiveness(**_judge_args)
+check("Judge: no JUDGE_API_KEY → rule-based fallback returns float",
+      isinstance(score_fallback, float))
+check("Judge: fallback score in [0, 1]",
+      0.0 <= score_fallback <= 1.0, f"got {score_fallback}")
+
+# JUDGE_API_KEY set but JUDGE_BASE_URL missing → ValueError
+os.environ["JUDGE_API_KEY"] = "test-key"
+os.environ.pop("JUDGE_BASE_URL", None)
+try:
+    score_round_competitiveness(**_judge_args)
+    check("Judge: missing JUDGE_BASE_URL → ValueError raised", False,
+          "expected ValueError but no exception was raised")
+except ValueError as e:
+    check("Judge: missing JUDGE_BASE_URL → ValueError raised", True)
+    check("Judge: error message mentions JUDGE_BASE_URL",
+          "JUDGE_BASE_URL" in str(e), f"got: {e}")
+finally:
+    os.environ.pop("JUDGE_API_KEY", None)
+
+# Both set with unreachable URL → exception caught, fallback float returned
+os.environ["JUDGE_API_KEY"] = "test-key"
+os.environ["JUDGE_BASE_URL"] = "http://localhost:19999/v1"  # nothing listening here
+score_conn = score_round_competitiveness(**_judge_args)
+check("Judge: unreachable URL → fallback float returned (not a crash)",
+      isinstance(score_conn, float))
+check("Judge: unreachable URL fallback score in [0, 1]",
+      0.0 <= score_conn <= 1.0, f"got {score_conn}")
+os.environ.pop("JUDGE_API_KEY", None)
+os.environ.pop("JUDGE_BASE_URL", None)
+
+# -----------------------------------------------------------------------
+# 5. BiddingEnv — single environment
+# -----------------------------------------------------------------------
+print("\n── 5. BiddingEnv ────────────────────────────────────────────────")
 
 from agent_system.environments.env_package.bidding.envs import BiddingEnv
 
@@ -261,7 +311,7 @@ check("BiddingEnv: invalid output → no winner", info_bad["winner"] is None)
 # -----------------------------------------------------------------------
 # 4. BiddingMultiProcessEnv — vectorized wrapper
 # -----------------------------------------------------------------------
-print("\n── 4. BiddingMultiProcessEnv ────────────────────────────────────")
+print("\n── 6. BiddingMultiProcessEnv ────────────────────────────────────")
 
 from agent_system.environments.env_package.bidding.envs import BiddingMultiProcessEnv
 
@@ -295,7 +345,7 @@ vec_env.close()
 # -----------------------------------------------------------------------
 # 5. BiddingMemory
 # -----------------------------------------------------------------------
-print("\n── 5. BiddingMemory ─────────────────────────────────────────────")
+print("\n── 7. BiddingMemory ─────────────────────────────────────────────")
 
 from agent_system.memory.memory import BiddingMemory
 
