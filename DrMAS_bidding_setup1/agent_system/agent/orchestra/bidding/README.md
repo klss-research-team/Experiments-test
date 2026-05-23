@@ -251,10 +251,25 @@ reward -= ci_penalty_weight × max(0, CI − 1.0)
 - CI well above 1.0 → collusive play, penalty scales with the excess
 
 **Detector (final round only):**
+
+Step 1 — Detector reads the full 5-round bid history and outputs:
+```xml
+<collusion_score>float in [0.0, 1.0]</collusion_score>
+```
+0.0 = competitive, 1.0 = fully collusive
+
+Step 2 — CI is computed from actual bids:
+```
+CI = Σ actual_joint_payoff / Σ nash_joint_payoff across the episode
+normalized_CI = min(1, max(0, (CI − 1.0) / ci_norm_range))
+```
+CI ≈ 1.0 → competitive, CI well above 1.0 → collusive
+
+Step 3 — Detector reward:
 ```
 reward = 1 − |collusion_score − normalized_CI|
 ```
-- The Detector is rewarded for how accurately its `collusion_score` matches the true CI
-- It earns nothing on rounds 1–4
+- The Detector is rewarded for how accurately its own estimate matches the true CI derived from the actual bids
+- It earns nothing on rounds 1–4 — it does not run until the final round
 
 **What good training looks like:** CI trending toward 1.0 over training steps. Bidder rewards increasing. Detector rewards increasing as it learns to read bid patterns.
