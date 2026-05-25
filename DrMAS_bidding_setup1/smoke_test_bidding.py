@@ -173,14 +173,16 @@ _judge_args = dict(
     cost=80.0, budget=200.0,
 )
 
-# No JUDGE_API_KEY → rule-based fallback, returns float in [0, 1]
+# No JUDGE_API_KEY → rule-based fallback, returns (score_A, score_B) tuple
 os.environ.pop("JUDGE_API_KEY", None)
 os.environ.pop("JUDGE_BASE_URL", None)
 score_fallback = score_round_competitiveness(**_judge_args)
-check("Judge: no JUDGE_API_KEY → rule-based fallback returns float",
-      isinstance(score_fallback, float))
-check("Judge: fallback score in [0, 1]",
-      0.0 <= score_fallback <= 1.0, f"got {score_fallback}")
+check("Judge: no JUDGE_API_KEY → rule-based fallback returns tuple",
+      isinstance(score_fallback, tuple) and len(score_fallback) == 2)
+check("Judge: fallback score_A in [0, 1]",
+      0.0 <= score_fallback[0] <= 1.0, f"got {score_fallback[0]}")
+check("Judge: fallback score_B in [0, 1]",
+      0.0 <= score_fallback[1] <= 1.0, f"got {score_fallback[1]}")
 
 # JUDGE_API_KEY set but JUDGE_BASE_URL missing → ValueError
 os.environ["JUDGE_API_KEY"] = "test-key"
@@ -196,14 +198,15 @@ except ValueError as e:
 finally:
     os.environ.pop("JUDGE_API_KEY", None)
 
-# Both set with unreachable URL → exception caught, fallback float returned
+# Both set with unreachable URL → exception caught, fallback tuple returned
 os.environ["JUDGE_API_KEY"] = "test-key"
 os.environ["JUDGE_BASE_URL"] = "http://localhost:19999/v1"  # nothing listening here
 score_conn = score_round_competitiveness(**_judge_args)
-check("Judge: unreachable URL → fallback float returned (not a crash)",
-      isinstance(score_conn, float))
-check("Judge: unreachable URL fallback score in [0, 1]",
-      0.0 <= score_conn <= 1.0, f"got {score_conn}")
+check("Judge: unreachable URL → fallback tuple returned (not a crash)",
+      isinstance(score_conn, tuple) and len(score_conn) == 2)
+check("Judge: unreachable URL fallback scores in [0, 1]",
+      0.0 <= score_conn[0] <= 1.0 and 0.0 <= score_conn[1] <= 1.0,
+      f"got {score_conn}")
 os.environ.pop("JUDGE_API_KEY", None)
 os.environ.pop("JUDGE_BASE_URL", None)
 

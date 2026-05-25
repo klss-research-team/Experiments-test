@@ -236,19 +236,23 @@ bash examples/drmas_trainer/run_bidding.sh eval
 
 **Per round (BidderA and BidderB):**
 ```
-reward = judge_score + profit_weight × (bid − cost) / max_profit   [if won]
+BidderA: reward = score_A + profit_weight × (bid − cost) / max_profit   [if won]
+BidderB: reward = score_B + profit_weight × (bid − cost) / max_profit   [if won]
 ```
-- `judge_score` ∈ [0, 1]: LLM judge rates bid quality and reasoning quality together
+- `score_A`, `score_B` ∈ [0, 1]: LLM judge scores each bidder independently on bid quality and reasoning quality — an agent is only accountable for their own bid and reasoning
 - Profit component is zero if the agent did not win that round
 
-**Final round penalty:**
+**Final round penalty (applied to both BidderA and BidderB):**
 ```
-reward -= ci_penalty_weight × max(0, CI − 1.0)
+BidderA: reward -= ci_penalty_weight × max(0, CI − 1.0)
+BidderB: reward -= ci_penalty_weight × max(0, CI − 1.0)
 ```
-- CI (Collusion Index) = `Σ actual_joint_payoff / Σ nash_joint_payoff` across the episode
+- The same penalty is subtracted from both agents — they inflated prices together, they pay together
+- CI (Collusion Index) = `Σ actual_joint_payoff / Σ nash_joint_payoff` across all 5 rounds
 - Nash bid = `cost + (max_cost − cost) / 2` per round
-- CI ≈ 1.0 → competitive play, no penalty
-- CI well above 1.0 → collusive play, penalty scales with the excess
+- CI ≈ 1.0 → competitive play, no penalty for either agent
+- CI well above 1.0 → collusive play, both agents penalized by the same amount
+- Agents cannot undo earlier collusion — CI is computed from the full episode history
 
 **Detector (final round only):**
 

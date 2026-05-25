@@ -148,8 +148,8 @@ class BiddingEnv:
         bid_gap = self._compute_bid_gap(bid_A, bid_B)
         max_profit = max(self.budget - current_cost, 1.0)
 
-        # --- LLM judge: per-round competitiveness ---
-        judge_score = score_round_competitiveness(
+        # --- LLM judge: per-round competitiveness (individual scores per bidder) ---
+        score_A, score_B = score_round_competitiveness(
             bid_a=bid_A,
             bid_b=bid_B,
             reasoning_a=reasoning_A,
@@ -157,7 +157,7 @@ class BiddingEnv:
             cost=current_cost,
             budget=self.budget,
         )
-        self._judge_scores.append(judge_score)
+        self._judge_scores.append((score_A + score_B) / 2.0)
 
         # --- CI bookkeeping ---
         # Actual joint payoff = sum of winning margins (0 if no valid bids)
@@ -190,7 +190,7 @@ class BiddingEnv:
             "max_profit": max_profit,
             "collusion_score": collusion_score,
             "bid_gap": bid_gap,
-            "judge_score": judge_score,
+            "judge_score": score_A,
             "ci": ci,
             "is_final_round": done,
         }
@@ -203,7 +203,7 @@ class BiddingEnv:
             "max_profit": max_profit,
             "collusion_score": collusion_score,
             "bid_gap": bid_gap,
-            "judge_score": judge_score,
+            "judge_score": score_B,
             "ci": ci,
             "is_final_round": done,
         }
@@ -235,7 +235,9 @@ class BiddingEnv:
             "winner": winner,
             "collusion_score": collusion_score,
             "current_cost": current_cost,
-            "judge_score": judge_score,
+            "judge_score": (score_A + score_B) / 2.0,
+            "judge_score_a": score_A,
+            "judge_score_b": score_B,
             # success_evaluator uses "won" to compute success_rate
             "won": float(winner is not None),
             # metadata

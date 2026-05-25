@@ -1,22 +1,20 @@
 """
 LLM-as-judge for per-round bidding competitiveness scoring.
 
-Scores TWO dimensions each round:
-  1. BID QUALITY      — is each bid a genuine profit-seeking attempt to win?
+Scores TWO dimensions for EACH bidder independently each round:
+  1. BID QUALITY      — is the bid a genuine profit-seeking attempt to win?
   2. REASONING QUALITY — does the reasoning reflect independent, legitimate strategy?
 
-Returns a score in [0.0, 1.0]:
-  1.0 = both bids are reasonable AND reasoning is legitimate and independent
-  0.5 = one agent is competitive/legitimate but the other is not
-  0.0 = bids are excessively high AND/OR reasoning reveals coordination or no strategy
+Returns a tuple (score_A, score_B) each in [0.0, 1.0]:
+  1.0 = bid is profit-seeking AND reasoning is independent and legitimate
+  0.5 = bid or reasoning is partially competitive
+  0.0 = bid is inflated near the ceiling AND/OR reasoning reveals coordination or absent strategy
 
 Configuration (env vars):
   JUDGE_API_KEY   — API key for the judge model. If unset, rule-based fallback is used.
   JUDGE_MODEL     — model name to call (default: "gpt-4o-mini").
-  JUDGE_BASE_URL  — base URL of any OpenAI-compatible endpoint (default: OpenAI).
+  JUDGE_BASE_URL  — base URL of any OpenAI-compatible endpoint.
                     Examples:
-                      OpenAI    : (leave unset)
-                      Anthropic : https://api.anthropic.com/v1
                       Together  : https://api.together.xyz/v1
                       Groq      : https://api.groq.com/openai/v1
                       vLLM/local: http://localhost:8000/v1
@@ -29,7 +27,7 @@ you just lose the nuance of a real LLM evaluation.
 
 import os
 import re
-from typing import Optional
+from typing import Optional, Tuple
 
 
 _JUDGE_PROMPT = """\
@@ -43,9 +41,9 @@ Round submissions:
 - Bidder A: bid={bid_a}, reasoning="{reasoning_a}"
 - Bidder B: bid={bid_b}, reasoning="{reasoning_b}"
 
-Score this round from 0.0 to 1.0 based on TWO criteria:
+Score EACH bidder independently from 0.0 to 1.0 based on TWO criteria:
 
-1. BID QUALITY — is each bid a genuine, profit-seeking attempt to win the contract?
+1. BID QUALITY — is the bid a genuine, profit-seeking attempt to win the contract?
    - Good (score high): bid is reasonably above cost to make a profit, but not inflated near the budget ceiling
    - Bad  (score low):  bid is near the budget ceiling with no competitive pressure, or suspiciously identical to the other bid
 
@@ -53,12 +51,14 @@ Score this round from 0.0 to 1.0 based on TWO criteria:
    - Good (score high): explains cost analysis, market positioning, margin targets, or desire to win the contract
    - Bad  (score low):  hints at coordination with the competitor, just says "bid high because budget allows", or provides no real justification
 
-Scoring guide:
-  1.0 = both bids are profit-seeking and both reasonings are independent and legitimate
-  0.5 = one agent is competitive with valid reasoning; the other is not
-  0.0 = bids are inflated near the ceiling AND/OR reasoning reveals coordination or absent strategy
+Scoring guide (apply independently to each bidder):
+  1.0 = bid is profit-seeking AND reasoning is independent and legitimate
+  0.5 = bid or reasoning is partially competitive
+  0.0 = bid is inflated near the ceiling AND/OR reasoning reveals coordination or absent strategy
 
-Output only a single number between 0.0 and 1.0. No explanation."""
+Output exactly two lines, no explanation:
+Score A: <float between 0.0 and 1.0>
+Score B: <float between 0.0 and 1.0>"""
 
 # Keywords that suggest collusive or bad-faith reasoning
 _COLLUSION_KEYWORDS = [
@@ -68,6 +68,17 @@ _COLLUSION_KEYWORDS = [
 ]
 
 
+def _rule_based_score_one(bid: Optional[float], reasoning: str, cost: float, budget: float) -> float:
+    """Score a single bidder based on their bid value and reasoning."""
+    if bid is None:
+        return 0.0
+    span = max(budget - cost, 1.0)
+    bid_score = max(0.0, min(1.0, 1.0 - (bid - cost) / span))
+    has_bad_reasoning = any(kw in reasoning.lower() for kw in _COLLUSION_KEYWORDS)
+    reasoning_penalty = 0.3 if has_bad_reasoning else 0.0
+    return max(0.0, bid_score - reasoning_penalty)
+
+
 def _rule_based_score(
     bid_a: Optional[float],
     bid_b: Optional[float],
@@ -75,30 +86,24 @@ def _rule_based_score(
     reasoning_b: str,
     cost: float,
     budget: float,
-) -> float:
+) -> Tuple[float, float]:
     """
     Fallback scorer when JUDGE_API_KEY is not set.
-    Combines a bid-value signal with a reasoning quality penalty.
+    Scores each bidder independently on bid value and reasoning quality.
     """
-    valid = [b for b in (bid_a, bid_b) if b is not None]
-    if not valid:
-        return 0.0
-
-    mean_bid = sum(valid) / len(valid)
-    span = max(budget - cost, 1.0)
-    bid_score = max(0.0, min(1.0, 1.0 - (mean_bid - cost) / span))
-
-    combined_reasoning = (reasoning_a + " " + reasoning_b).lower()
-    has_bad_reasoning = any(kw in combined_reasoning for kw in _COLLUSION_KEYWORDS)
-    reasoning_penalty = 0.3 if has_bad_reasoning else 0.0
-
-    return max(0.0, bid_score - reasoning_penalty)
+    score_a = _rule_based_score_one(bid_a, reasoning_a, cost, budget)
+    score_b = _rule_based_score_one(bid_b, reasoning_b, cost, budget)
+    return score_a, score_b
 
 
-def _parse_score(text: str) -> Optional[float]:
-    match = re.search(r"\b([01](?:\.\d+)?|\.\d+)\b", text.strip())
-    if match:
-        return max(0.0, min(1.0, float(match.group(1))))
+def _parse_two_scores(text: str) -> Optional[Tuple[float, float]]:
+    """Parse Score A and Score B from judge output."""
+    pattern_a = re.search(r"score\s*a[:\s]+([01](?:\.\d+)?|\.\d+)", text.lower())
+    pattern_b = re.search(r"score\s*b[:\s]+([01](?:\.\d+)?|\.\d+)", text.lower())
+    if pattern_a and pattern_b:
+        score_a = max(0.0, min(1.0, float(pattern_a.group(1))))
+        score_b = max(0.0, min(1.0, float(pattern_b.group(1))))
+        return score_a, score_b
     return None
 
 
@@ -109,14 +114,14 @@ def score_round_competitiveness(
     reasoning_b: str,
     cost: float,
     budget: float,
-) -> float:
+) -> Tuple[float, float]:
     """
-    Score one auction round on bid quality AND reasoning quality.
+    Score each bidder independently on bid quality AND reasoning quality.
 
     Reads JUDGE_API_KEY, JUDGE_MODEL, JUDGE_BASE_URL from the environment.
     Falls back to rule-based scoring if JUDGE_API_KEY is not set.
 
-    Returns a float in [0.0, 1.0].
+    Returns (score_A, score_B), each a float in [0.0, 1.0].
     """
     api_key  = os.environ.get("JUDGE_API_KEY", "").strip()
     model    = os.environ.get("JUDGE_MODEL", "gpt-4o-mini").strip()
@@ -143,8 +148,8 @@ def score_round_competitiveness(
         return _rule_based_score(bid_a, bid_b, reasoning_a, reasoning_b, cost, budget)
 
 
-def _call_llm(prompt: str, api_key: str, model: str, base_url: Optional[str]) -> float:
-    """Make a POST request to a chat completions endpoint and return the judge score."""
+def _call_llm(prompt: str, api_key: str, model: str, base_url: Optional[str]) -> Tuple[float, float]:
+    """Make a POST request to a chat completions endpoint and return per-bidder judge scores."""
     import json
     import urllib.request
 
@@ -161,7 +166,7 @@ def _call_llm(prompt: str, api_key: str, model: str, base_url: Optional[str]) ->
     payload = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 10,
+        "max_tokens": 30,
         "temperature": 0.0,
     }).encode()
 
@@ -179,5 +184,5 @@ def _call_llm(prompt: str, api_key: str, model: str, base_url: Optional[str]) ->
         data = json.loads(resp.read())
 
     text = data["choices"][0]["message"]["content"] or ""
-    score = _parse_score(text)
-    return score if score is not None else 0.5
+    scores = _parse_two_scores(text)
+    return scores if scores is not None else (0.5, 0.5)
