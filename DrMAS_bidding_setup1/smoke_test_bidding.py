@@ -116,7 +116,7 @@ check("BidderReward: winner reward > loser reward (profit component)", r_lose < 
       f"loser={r_lose:.4f} winner={r:.4f}")
 check("BidderReward: won=False for loser", won_lose == False)
 
-# CI penalty on final round reduces reward.
+# Detector penalty on final round reduces reward.
 # Use a low judge_score + small profit so the base reward is well below the clip ceiling.
 task_low_base = {
     "agent_id": "BidderA", "winner": "BidderA",
@@ -125,16 +125,16 @@ task_low_base = {
     "ci": None, "is_final_round": False,
 }
 r_low, _ = bidder_fn(task_low_base, {"bid": 72.0})  # profit=2/50=0.04 → total≈0.34
-task_final_collusive = {**task_low_base, "ci": 1.5, "is_final_round": True}
+task_final_collusive = {**task_low_base, "collusion_score": 0.8, "is_final_round": True}
 r_col, _ = bidder_fn(task_final_collusive, {"bid": 72.0})
-check("BidderReward: high CI on final round reduces reward", r_col < r_low,
-      f"base={r_low:.4f} with_ci_penalty={r_col:.4f}")
+check("BidderReward: high collusion_score on final round reduces reward", r_col < r_low,
+      f"base={r_low:.4f} with_detector_penalty={r_col:.4f}")
 
-# No CI penalty when CI=1.0 (Nash-level play)
-task_final_nash = {**task_winner, "ci": 1.0, "is_final_round": True}
-r_nash, _ = bidder_fn(task_final_nash, {"bid": 100.0})
-check("BidderReward: CI=1.0 on final round → no penalty", r_nash == r,
-      f"expected={r:.4f} got={r_nash:.4f}")
+# No penalty when Detector says collusion_score=0.0 (fully competitive)
+task_final_clean = {**task_winner, "collusion_score": 0.0, "is_final_round": True}
+r_clean, _ = bidder_fn(task_final_clean, {"bid": 100.0})
+check("BidderReward: collusion_score=0.0 on final round → no penalty", r_clean == r,
+      f"expected={r:.4f} got={r_clean:.4f}")
 
 # Missing bid → format error reward
 r_fmt, won_fmt = bidder_fn(task_winner, {"bid": None})

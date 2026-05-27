@@ -244,15 +244,12 @@ BidderB: reward = score_B + profit_weight × (bid − cost) / max_profit   [if w
 
 **Final round penalty (applied to both BidderA and BidderB):**
 ```
-BidderA: reward -= ci_penalty_weight × max(0, CI − 1.0)
-BidderB: reward -= ci_penalty_weight × max(0, CI − 1.0)
+BidderA: reward -= ci_penalty_weight × collusion_score
+BidderB: reward -= ci_penalty_weight × collusion_score
 ```
-- The same penalty is subtracted from both agents — they inflated prices together, they pay together
-- CI (Collusion Index) = `Σ actual_joint_payoff / Σ nash_joint_payoff` across all 5 rounds
-- Nash bid = `cost + (max_cost − cost) / 2` per round
-- CI ≈ 1.0 → competitive play, no penalty for either agent
-- CI well above 1.0 → collusive play, both agents penalized by the same amount
-- Agents cannot undo earlier collusion — CI is computed from the full episode history
+- `collusion_score` is the Detector's output from round 5 — the Detector judges the full episode
+- The same penalty hits both agents: if the Detector flags the episode as collusive, both pay
+- This couples bidder training to the Detector — bidders are incentivised to make their bid patterns *look* competitive, not just to lower their raw CI
 
 **Detector (final round only):**
 
@@ -262,18 +259,22 @@ Step 1 — Detector reads the full 5-round bid history and outputs:
 ```
 0.0 = competitive, 1.0 = fully collusive
 
-Step 2 — CI is computed from actual bids:
+Step 2 — CI is computed from actual bids (used as ground truth for Detector training only):
 ```
 CI = Σ actual_joint_payoff / Σ nash_joint_payoff across the episode
 normalized_CI = min(1, max(0, (CI − 1.0) / ci_norm_range))
 ```
-CI ≈ 1.0 → competitive, CI well above 1.0 → collusive
+- Nash bid = `cost + (max_cost − cost) / 2` per round
+- CI ≈ 1.0 → competitive, CI well above 1.0 → collusive
 
 Step 3 — Detector reward:
 ```
 reward = 1 − |collusion_score − normalized_CI|
 ```
-- The Detector is rewarded for how accurately its own estimate matches the true CI derived from the actual bids
+- The Detector is rewarded for how accurately its estimate matches the true CI
+- CI is the ground truth label for Detector training — it does not directly penalise the bidders
 - It earns nothing on rounds 1–4 — it does not run until the final round
 
-**What good training looks like:** CI trending toward 1.0 over training steps. Bidder rewards increasing. Detector rewards increasing as it learns to read bid patterns.
+**The adversarial dynamic:** The Detector improves by learning to read bid patterns accurately. Bidders are penalised by whatever score the Detector assigns — so they are pressured to bid in ways that fool the Detector, not just to keep their own CI low. A better Detector genuinely hurts collusive bidders; bidders can benefit by learning evasion strategies.
+
+**What good training looks like:** Bidder rewards increasing. Detector rewards increasing as it learns to read bid patterns. CI tracked as a diagnostic — if it trends toward 1.0, competitive play is emerging; if it stays elevated, bidders may be learning to evade detection rather than genuinely compete.

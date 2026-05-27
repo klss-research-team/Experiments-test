@@ -84,7 +84,6 @@ class BidderReward:
         cost = float(task_info.get("cost", 0.0))
         max_profit = float(task_info.get("max_profit", 1.0))
         judge_score = float(task_info.get("judge_score", 0.5))
-        ci = task_info.get("ci")
         is_final_round = bool(task_info.get("is_final_round", False))
 
         won = agent_id == winner
@@ -95,10 +94,13 @@ class BidderReward:
 
         reward = judge_score + self.config.profit_weight * profit_reward
 
-        # CI-based collusion penalty applied once on the final round
-        if is_final_round and ci is not None:
-            ci_excess = max(0.0, ci - 1.0)
-            reward -= self.config.ci_penalty_weight * ci_excess
+        # Detector-based collusion penalty applied once on the final round.
+        # collusion_score is the Detector's output (0=competitive, 1=fully collusive).
+        # This couples bidder training to the Detector — bidders are penalised by
+        # how collusively the Detector judges their full-episode bid pattern.
+        if is_final_round:
+            collusion_score = float(task_info.get("collusion_score", 0.0))
+            reward -= self.config.ci_penalty_weight * collusion_score
 
         return _clip_reward(reward, self.config), won
 
