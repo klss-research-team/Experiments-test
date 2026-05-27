@@ -74,8 +74,8 @@ class TrajectoryCollector:
             for data in total_batch_list[bs]:
                 assert traj_uid[bs] == data['traj_uid'], "data is not from the same trajectory"
                 if data['active_masks']:
-                    # episode_rewards
-                    data['episode_rewards'] = episode_rewards[bs]
+                    # episode_rewards: use per-agent value if annotated (bidding), else combined (other envs)
+                    data['episode_rewards'] = data.pop('episode_rewards_per_agent', episode_rewards[bs])
                     # episode_lengths
                     data['episode_lengths'] = episode_lengths[bs]
                     # tool_callings
@@ -442,6 +442,10 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
         episode_lengths = np.zeros(batch_size, dtype=np.float32)
         episode_rewards = np.zeros(batch_size, dtype=np.float32)
         tool_callings = np.zeros(batch_size, dtype=np.float32)
+        episode_rewards_per_agent = {
+            agent_id: np.zeros(batch_size, dtype=np.float32)
+            for agent_id in self.multiagent_orchestra.agent_order
+        }
         # Trajectory collection loop
         for _step in range(self.config.env.max_steps):
             active_masks = np.logical_not(is_done)
@@ -467,6 +471,14 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
             episode_rewards[active_masks] += torch_to_numpy(rewards)[active_masks]
             episode_lengths[active_masks] += 1
 
+            # Accumulate per-agent episode rewards from info
+            for _agent_id, acc in episode_rewards_per_agent.items():
+                _step_rewards = np.array([
+                    float(info.get('per_agent_rewards', {}).get(_agent_id, torch_to_numpy(rewards)[i]))
+                    for i, info in enumerate(infos)
+                ], dtype=np.float32)
+                acc[active_masks] += _step_rewards[active_masks]
+
             assert len(rewards) == batch_size, f"env should return rewards for all environments, got {len(rewards)} rewards for {batch_size} environments"
 
             for data in multiagent_batch_buffer:
@@ -474,7 +486,12 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                 agent_batch.non_tensor_batch['agent_id'] = np.array([agent_id for _ in range(batch_size)], dtype=object)
                 agent_batch.non_tensor_batch['uid'] = uid_batch
                 agent_batch.non_tensor_batch['traj_uid'] = traj_uid
-                agent_batch.non_tensor_batch['rewards'] = torch_to_numpy(rewards, is_object=True)
+                # Route per-agent step reward — each agent trains on its own reward signal
+                _agent_step_rewards = np.array([
+                    float(info.get('per_agent_rewards', {}).get(agent_id, torch_to_numpy(rewards)[i]))
+                    for i, info in enumerate(infos)
+                ], dtype=np.float32)
+                agent_batch.non_tensor_batch['rewards'] = _agent_step_rewards.astype(object)
                 agent_batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
                 agent_batch_list: list[dict] = to_list_of_dict(agent_batch)
                 for i in range(batch_size):
@@ -484,19 +501,28 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
 
             # Update done states
             is_done = np.logical_or(is_done, dones)
-                
+
             # Update observations for next step
             obs = next_obs
 
             # Break if all environments are done
             if is_done.all():
                 break
-        
+
         success: Dict[str, np.ndarray] = envs.success_evaluator(
                     total_infos=total_infos,
                     total_batch_list=total_batch_list,
-                    episode_rewards=episode_rewards, 
+                    episode_rewards=episode_rewards,
                     episode_lengths=episode_lengths,
                     )
-        
+
+        # Tag each data dict with its per-agent episode reward so gather_rollout_data
+        # assigns the correct individual signal to each agent's training batch.
+        for bs in range(batch_size):
+            for data in total_batch_list[bs]:
+                if data.get('active_masks'):
+                    _aid = data.get('agent_id')
+                    if _aid and _aid in episode_rewards_per_agent:
+                        data['episode_rewards_per_agent'] = float(episode_rewards_per_agent[_aid][bs])
+
         return total_batch_list, episode_rewards, episode_lengths, success, traj_uid, tool_callings
