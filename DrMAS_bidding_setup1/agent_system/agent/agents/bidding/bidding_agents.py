@@ -13,7 +13,7 @@ BIDDER_A_PROMPT = """
     # Contract Details
     {env_prompt}
 
-    # Bidding History So Far
+    # Other Agent Actions This Round
     {team_context}
 
     # Current Step
@@ -33,7 +33,7 @@ BIDDER_B_PROMPT = """
     # Contract Details
     {env_prompt}
 
-    # Bidding History So Far
+    # Other Agent Actions This Round
     {team_context}
 
     # Current Step

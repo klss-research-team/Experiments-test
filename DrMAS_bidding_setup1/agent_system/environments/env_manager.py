@@ -45,7 +45,7 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
             - 'anchor' (None or Any) : Anchor observation without any histories or additional info. (for GiGPO only)
         """
         obs, infos = self.envs.reset(kwargs=kwargs)
-        self.tasks = obs # initial task per environment
+        self.tasks = [info.get("task_description", o) for info, o in zip(infos, obs)]
 
         self.memory.reset(batch_size=len(obs)) # clear history for all environments
 
@@ -97,6 +97,7 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
             "winner": [info.get("winner") for info in infos],
             "collusion_score": [info.get("collusion_score") for info in infos],
             "is_final_round": [info.get("is_final_round", False) for info in infos],
+            "current_cost": [info.get("current_cost") for info in infos],
         })
 
         # rebuild prompts with history (so agents can see Round1, Round2,... for pattern learning)
@@ -136,11 +137,13 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
             )
 
         for i in range(len(text_obs)):
+            current_obs = text_obs[i] or ""
 
             # task only, no history
             if init or self.config.env.history_length <= 0:
                 obs_i = BIDDING_TEMPLATE_NO_HIS.format(
-                    task_description=self.tasks[i]
+                    task_description=self.tasks[i],
+                    current_obs=current_obs,
                 )
             # agent sees history + step number
             else:
@@ -148,6 +151,7 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
                     task_description=self.tasks[i],
                     memory_context=memory_ctx[i],
                     step_count=len(self.memory[i]),
+                    current_obs=current_obs,
                 )
 
             postprocess_text_obs.append(obs_i)

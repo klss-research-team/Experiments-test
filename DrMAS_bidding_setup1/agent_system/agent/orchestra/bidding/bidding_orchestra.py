@@ -48,11 +48,11 @@ class BiddingMultiAgentOrchestra(BaseOrchestra):
     """
     Multi-agent orchestra for procurement bidding.
 
-    Execution order:
-    1. BidderA submits bid.
-    2. BidderB submits bid after seeing context.
-    3. Detector analyzes both bidder outputs.
-    4. Combined text action is returned to the environment.
+    Execution order alternates each round to avoid a fixed information advantage:
+      Odd rounds  (1, 3, 5): BidderB → BidderA → Detector
+      Even rounds (2, 4):    BidderA → BidderB → Detector
+    The second bidder each round sees the first bidder's response via team_context.
+    Detector runs on the final round only and sees the full episode history.
     """
 
     BIDDER_A = "BidderA"

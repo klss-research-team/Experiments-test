@@ -321,9 +321,12 @@ class BiddingMultiProcessEnv:
             ),
             "data_source": kwargs.get("data_source", "bidding"),
         }
-        obs = env.reset(extras)
-        info = {"data_source": extras["data_source"]}
-        return obs, info
+        task_description = env.reset(extras)
+        info = {
+            "data_source": extras["data_source"],
+            "task_description": task_description,
+        }
+        return f"Round 1 cost: ${env.cost:.2f}", info
 
     def _sync_step(
         self, env: BiddingEnv, action: str

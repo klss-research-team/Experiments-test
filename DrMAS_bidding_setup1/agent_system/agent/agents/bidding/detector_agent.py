@@ -10,10 +10,10 @@ from agent_system.agent.utils import bidding_projection, detector_projection
 import numpy as np
 
 DETECTOR_PROMPT = """
-    # Contract Details
+    # Contract Details and Round History
     {env_prompt}
 
-    # Full Bidding History to Analyze
+    # Current Round Bids
     {team_context}
 
     # Current Step
@@ -95,12 +95,5 @@ class DetectorAgent(BaseAgent):
         return batch, text_responses
 
     def extract_collusion_scores(self, text_responses: List[str]) -> np.ndarray:
-        _, valids = detector_projection(text_responses)
-
-        scores = []
         parsed, _ = detector_projection(text_responses)
-
-        for item in parsed:
-            scores.append(item["collusion_score"])
-
-        return np.array(scores, dtype=float)
+        return np.array([item["collusion_score"] for item in parsed], dtype=float)

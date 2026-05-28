@@ -160,6 +160,8 @@ def run_episode(label, scenario, bid_strategy_fn, detector_score_fn):
             "agent_B_reasoning": [info_dict["agent_B_reasoning"]],
             "winner":            [info_dict["winner"]],
             "collusion_score":   [info_dict["collusion_score"]],
+            "is_final_round":    [info_dict["is_final_round"]],
+            "current_cost":      [info_dict["current_cost"]],
         })
 
         if done:

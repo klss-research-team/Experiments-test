@@ -367,6 +367,7 @@ for round_num in range(1, 4):
         "winner":            ["BidderA", "BidderB"],
         "collusion_score":   [0.1 * round_num, 0.2 * round_num],
         "is_final_round":    [is_final, is_final],
+        "current_cost":      [80.0 + round_num, 70.0 + round_num],
     })
 
 check("BiddingMemory.store: 3 rounds stored per env", len(mem[0]) == 3)
@@ -381,6 +382,7 @@ check("BiddingMemory.fetch: Round 2 in context", "Round 2" in contexts[0])
 check("BiddingMemory.fetch: Round 3 in context", "Round 3" in contexts[0])
 check("BiddingMemory.fetch: Round 1 NOT in context (truncated)",
       "Round 1" not in contexts[0])
+check("BiddingMemory.fetch: Cost line in context", "Cost:" in contexts[0])
 
 # fetch all 3 rounds
 contexts_all, lengths_all = mem.fetch(history_length=10)

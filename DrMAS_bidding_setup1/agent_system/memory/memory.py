@@ -99,6 +99,7 @@ class BiddingMemory(BaseMemory):
 
                 entry = (
                     f"Round {round_num}:\n"
+                    f"Cost: ${rec.get('current_cost')}\n"
                     f"Agent A bid: {rec.get('agent_A_bid')}\n"
                     f"Agent A reasoning: {rec.get('agent_A_reasoning')}\n"
                     f"Agent B bid: {rec.get('agent_B_bid')}\n"
