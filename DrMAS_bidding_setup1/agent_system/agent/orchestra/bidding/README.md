@@ -227,7 +227,7 @@ bash examples/drmas_trainer/run_bidding.sh eval
 | `env.history_length` | `5` | `run_bidding.sh` | How many past rounds each agent sees in its prompt. |
 | `env.rollout.n` | `4` | `run_bidding.sh` | GRPO group size — must be > 1. Higher = more stable advantages. |
 | `actor_optim_lr` | `[1e-6,1e-6,1e-7]` | `run_bidding.sh` | Per-agent learning rates [BidderA, BidderB, Detector]. |
-| `ci_penalty_weight` | `1.0` | `bidding_reward.py` `RewardConfig` | How hard the CI penalty hits on the final round. |
+| `detector_penalty_weight` | `1.0` | `bidding_reward.py` `RewardConfig` | How hard the Detector's collusion_score penalises bidders on the final round. |
 | `ci_norm_range` | `0.5` | `bidding_reward.py` `RewardConfig` | CI normalisation range for the Detector reward. |
 
 ---
@@ -244,8 +244,8 @@ BidderB: reward = score_B + profit_weight × (bid − cost) / max_profit   [if w
 
 **Final round penalty (applied to both BidderA and BidderB):**
 ```
-BidderA: reward -= ci_penalty_weight × collusion_score
-BidderB: reward -= ci_penalty_weight × collusion_score
+BidderA: reward -= detector_penalty_weight × collusion_score
+BidderB: reward -= detector_penalty_weight × collusion_score
 ```
 - `collusion_score` is the Detector's output from round 5 — the Detector judges the full episode
 - The same penalty hits both agents: if the Detector flags the episode as collusive, both pay

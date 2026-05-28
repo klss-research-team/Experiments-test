@@ -358,6 +358,7 @@ check("BiddingMemory.reset: empty after reset", len(mem) == 2)
 
 # Store 3 rounds
 for round_num in range(1, 4):
+    is_final = round_num == 3
     mem.store({
         "agent_A_bid":       [100.0 + round_num, 90.0 + round_num],
         "agent_A_reasoning": [f"round {round_num} A reason"] * 2,
@@ -365,6 +366,7 @@ for round_num in range(1, 4):
         "agent_B_reasoning": [f"round {round_num} B reason"] * 2,
         "winner":            ["BidderA", "BidderB"],
         "collusion_score":   [0.1 * round_num, 0.2 * round_num],
+        "is_final_round":    [is_final, is_final],
     })
 
 check("BiddingMemory.store: 3 rounds stored per env", len(mem[0]) == 3)

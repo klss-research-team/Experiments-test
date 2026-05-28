@@ -122,7 +122,7 @@ class BiddingMultiAgentOrchestra(BaseOrchestra):
             current_order = [self.BIDDER_B, self.BIDDER_A, self.DETECTOR]
 
         # Detector sees the full episode history — run it only on the final round.
-        is_final_round = (step + 1 >= self.max_steps)
+        is_final_round = (step >= self.max_steps)
 
         for agent_id in current_order:
             if not agent_active_mask.any():

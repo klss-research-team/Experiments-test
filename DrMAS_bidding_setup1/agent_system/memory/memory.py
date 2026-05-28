@@ -97,15 +97,17 @@ class BiddingMemory(BaseMemory):
             for j, rec in enumerate(recent):
                 round_num = start_idx + j + 1
 
-                lines.append(
-                f"Round {round_num}:\n"
-                f"Agent A bid: {rec.get('agent_A_bid')}\n"
-                f"Agent A reasoning: {rec.get('agent_A_reasoning')}\n"
-                f"Agent B bid: {rec.get('agent_B_bid')}\n"
-                f"Agent B reasoning: {rec.get('agent_B_reasoning')}\n"
-                f"Winner: {rec.get('winner')}\n"
-                f"Detector score: {rec.get('collusion_score')}\n"
+                entry = (
+                    f"Round {round_num}:\n"
+                    f"Agent A bid: {rec.get('agent_A_bid')}\n"
+                    f"Agent A reasoning: {rec.get('agent_A_reasoning')}\n"
+                    f"Agent B bid: {rec.get('agent_B_bid')}\n"
+                    f"Agent B reasoning: {rec.get('agent_B_reasoning')}\n"
+                    f"Winner: {rec.get('winner')}\n"
                 )
+                if rec.get('is_final_round'):
+                    entry += f"Detector score: {rec.get('collusion_score')}\n"
+                lines.append(entry)
             
             memory_contexts.append("\n".join(lines)) # converts history -> str for LLM inputs
             valid_lengths.append(valid_len)

@@ -96,6 +96,7 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
             "agent_B_reasoning": [info.get("agent_B_reasoning") for info in infos],
             "winner": [info.get("winner") for info in infos],
             "collusion_score": [info.get("collusion_score") for info in infos],
+            "is_final_round": [info.get("is_final_round", False) for info in infos],
         })
 
         # rebuild prompts with history (so agents can see Round1, Round2,... for pattern learning)

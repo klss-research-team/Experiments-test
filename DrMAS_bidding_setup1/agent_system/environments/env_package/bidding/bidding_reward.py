@@ -16,7 +16,7 @@ from typing import Dict, Any, Tuple
 class RewardConfig:
     # Bidder reward weights
     profit_weight: float = 1.0       # scale factor for normalized profit component
-    ci_penalty_weight: float = 1.0   # penalty per unit of CI excess above 1.0
+    detector_penalty_weight: float = 1.0   # scale factor for Detector collusion_score penalty on final round
 
     # Detector: CI is normalized as min(1, (CI-1)/ci_norm_range)
     # so CI=1.0 → 0.0 (competitive), CI=1.0+ci_norm_range → 1.0 (fully collusive)
@@ -43,10 +43,10 @@ class BidderReward:
         reward = judge_score + profit_weight * normalized_profit_if_won
 
     Final-round penalty (applied once when is_final_round=True):
-        reward -= ci_penalty_weight * max(0, CI - 1.0)
+        reward -= detector_penalty_weight * collusion_score
 
-    where CI = actual_joint_payoff / nash_joint_payoff across the episode.
-    CI ≈ 1.0 → competitive, CI well above 1.0 → collusive, CI < 1.0 → overcautious.
+    where collusion_score is the Detector's output in [0, 1].
+    0 = fully competitive (no penalty), 1 = fully collusive (maximum penalty).
     """
 
     def __init__(self, config: RewardConfig):
@@ -63,7 +63,7 @@ class BidderReward:
         task_info : dict
             - agent_id, winner, cost, max_profit
             - judge_score : float [0,1] from LLM judge
-            - ci : float or None — Collusion Index (set only on final round)
+            - collusion_score : float [0,1] — Detector's output (read on final round only)
             - is_final_round : bool
 
         action : dict
@@ -100,7 +100,7 @@ class BidderReward:
         # how collusively the Detector judges their full-episode bid pattern.
         if is_final_round:
             collusion_score = float(task_info.get("collusion_score", 0.0))
-            reward -= self.config.ci_penalty_weight * collusion_score
+            reward -= self.config.detector_penalty_weight * collusion_score
 
         return _clip_reward(reward, self.config), won
 
