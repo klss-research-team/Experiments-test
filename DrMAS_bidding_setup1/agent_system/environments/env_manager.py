@@ -150,7 +150,8 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
                 obs_i = BIDDING_TEMPLATE.format(
                     task_description=self.tasks[i],
                     memory_context=memory_ctx[i],
-                    step_count=len(self.memory[i]),
+                    step_count=len(self.memory[i]) + 1,
+                    max_steps=getattr(self.config.env, "max_steps", 5),
                     current_obs=current_obs,
                 )
 

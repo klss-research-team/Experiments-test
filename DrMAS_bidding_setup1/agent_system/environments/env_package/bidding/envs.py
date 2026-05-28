@@ -301,6 +301,11 @@ class BiddingMultiProcessEnv:
 
         self.envs = [BiddingEnv(max_steps=max_steps) for _ in range(self.batch_size)]
 
+        # Seed each env's RNG from the master seed so runs are reproducible.
+        _seed_rng = random.Random(seed)
+        for env in self.envs:
+            env._rng.seed(_seed_rng.randint(0, 2**31))
+
         max_workers = min(self.batch_size, 256)
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
         self._loop = asyncio.new_event_loop()
