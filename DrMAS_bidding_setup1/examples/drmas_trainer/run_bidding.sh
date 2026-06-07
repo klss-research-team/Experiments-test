@@ -38,7 +38,7 @@ fi
 #   Together: export JUDGE_API_KEY="..."  JUDGE_MODEL="meta-llama/..."  JUDGE_BASE_URL="https://api.together.xyz/v1"
 #   vLLM    : export JUDGE_API_KEY="token"  JUDGE_MODEL="your-model"  JUDGE_BASE_URL="http://localhost:8000/v1"
 #
-# If JUDGE_API_KEY is not set, a rule-based fallback scorer is used automatically.
+# JUDGE_API_KEY is required — training will raise an error if it is not set.
 : "${JUDGE_API_KEY:=}"
 : "${JUDGE_MODEL:=gpt-4o-mini}"
 : "${JUDGE_BASE_URL:=}"

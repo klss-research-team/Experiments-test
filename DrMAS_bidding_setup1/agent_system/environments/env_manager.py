@@ -110,12 +110,70 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
         if not self.config.agent.multi_agent:
             for i, info in enumerate(infos):
                 info["is_action_valid"] = to_numpy(valids[i])
-        
+
+        # Log bidding-specific metrics to WandB on the final round of each episode
+        if infos[0].get("is_final_round", False):
+            self._log_wandb_metrics(infos)
+
         # convert outputs
         rewards = to_numpy(rewards)
         dones = to_numpy(dones)
 
         return next_observations, rewards, dones, infos
+
+    def _log_wandb_metrics(self, infos: List[Dict]) -> None:
+        """Log per-episode bidding metrics directly to WandB."""
+        try:
+            import wandb
+            if wandb.run is None:
+                return
+        except ImportError:
+            return
+
+        # Read ci_norm_range from config for Detector accuracy calculation
+        ci_norm_range = 0.3
+        try:
+            ci_norm_range = self.config.env.bidding.reward.ci_norm_range
+        except AttributeError:
+            pass
+
+        judge_a = [info.get("judge_score_a", 0.5) for info in infos]
+        judge_b = [info.get("judge_score_b", 0.5) for info in infos]
+        winner_rate = [float(info.get("won", 0.0)) for info in infos]
+
+        metrics = {
+            "bidding/winner_rate":       sum(winner_rate) / len(winner_rate),
+            "bidding/judge_score_a_mean": sum(judge_a) / len(judge_a),
+            "bidding/judge_score_b_mean": sum(judge_b) / len(judge_b),
+        }
+
+        # CI and Detector accuracy — only available on final round
+        gaps = []
+        ci_vals, cs_vals = [], []
+        for info in infos:
+            ci = info.get("ci")
+            cs = info.get("collusion_score", 0.0)
+            if ci is not None:
+                ci_vals.append(ci)
+                cs_vals.append(cs)
+                normalized_ci = min(1.0, max(0.0, (ci - 1.0) / ci_norm_range))
+                gaps.append(abs(cs - normalized_ci))
+
+        if ci_vals:
+            metrics["bidding/ci_mean"]             = sum(ci_vals) / len(ci_vals)
+            metrics["bidding/collusion_score_mean"] = sum(cs_vals) / len(cs_vals)
+            metrics["bidding/ci_detector_gap"]      = sum(gaps) / len(gaps)
+
+        # Per-agent rewards
+        rewards_a = [info["per_agent_rewards"]["BidderA"] for info in infos if "per_agent_rewards" in info]
+        rewards_b = [info["per_agent_rewards"]["BidderB"] for info in infos if "per_agent_rewards" in info]
+        rewards_d = [info["per_agent_rewards"]["Detector"] for info in infos if "per_agent_rewards" in info]
+        if rewards_a:
+            metrics["bidding/reward_bidder_a_mean"] = sum(rewards_a) / len(rewards_a)
+            metrics["bidding/reward_bidder_b_mean"] = sum(rewards_b) / len(rewards_b)
+            metrics["bidding/reward_detector_mean"] = sum(rewards_d) / len(rewards_d)
+
+        wandb.log(metrics, commit=False)
              
 
     def build_text_obs(
