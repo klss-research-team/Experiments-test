@@ -15,7 +15,7 @@ from typing import Dict, Any, Tuple
 @dataclass
 class RewardConfig:
     # Bidder reward weights
-    profit_weight: float = 1.0       # scale factor for normalized profit component
+    profit_weight: float = 1.0             # scale factor for normalized profit component
     detector_penalty_weight: float = 1.0   # scale factor for Detector collusion_score penalty on final round
 
     # Detector: CI is normalized as min(1, (CI-1)/ci_norm_range)
@@ -25,14 +25,6 @@ class RewardConfig:
     # General constants
     format_error_reward: float = 0.0
     unk_error_reward: float = 0.0
-
-    # Optional clipping
-    min_reward: float = -1.0
-    max_reward: float = 1.0
-
-
-def _clip_reward(value: float, config: RewardConfig) -> float:
-    return max(config.min_reward, min(config.max_reward, value))
 
 
 class BidderReward:
@@ -102,7 +94,7 @@ class BidderReward:
             collusion_score = float(task_info.get("collusion_score", 0.0))
             reward -= self.config.detector_penalty_weight * collusion_score
 
-        return _clip_reward(reward, self.config), won
+        return reward, won
 
 
 class DetectorReward:
@@ -163,6 +155,6 @@ class DetectorReward:
         reward = 1.0 - error
         is_close = error < 0.2
 
-        return _clip_reward(reward, self.config), is_close
+        return reward, is_close
 
 

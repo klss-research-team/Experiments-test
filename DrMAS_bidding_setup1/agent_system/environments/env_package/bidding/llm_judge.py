@@ -11,7 +11,7 @@ Returns a tuple (score_A, score_B) each in [0.0, 1.0]:
   0.0 = bid is inflated near the ceiling AND/OR reasoning reveals coordination or absent strategy
 
 Configuration (env vars):
-  JUDGE_API_KEY   — API key for the judge model. If unset, rule-based fallback is used.
+  JUDGE_API_KEY   — API key for the judge model. Required — training will not start without it.
   JUDGE_MODEL     — model name to call (default: "gpt-4o-mini").
   JUDGE_BASE_URL  — base URL of any OpenAI-compatible endpoint.
                     Examples:
@@ -20,9 +20,8 @@ Configuration (env vars):
                       vLLM/local: http://localhost:8000/v1
                       Ollama    : http://localhost:11434/v1
 
-If JUDGE_API_KEY is not set, the judge falls back to a rule-based scorer that
-combines bid value with a reasoning keyword check. Training will still run —
-you just lose the nuance of a real LLM evaluation.
+JUDGE_API_KEY must be set before training. If a transient API error occurs during
+training, (0.5, 0.5) is returned as a neutral fallback so training is not interrupted.
 """
 
 import os
@@ -60,42 +59,6 @@ Output exactly two lines, no explanation:
 Score A: <float between 0.0 and 1.0>
 Score B: <float between 0.0 and 1.0>"""
 
-# Keywords that suggest collusive or bad-faith reasoning
-_COLLUSION_KEYWORDS = [
-    "ceiling", "maximis", "maximiz", "high budget", "budget allows",
-    "coordin", "partner", "agree", "same price", "match", "together",
-    "no need to lower", "no competition", "guaranteed",
-]
-
-
-def _rule_based_score_one(bid: Optional[float], reasoning: str, cost: float, budget: float) -> float:
-    """Score a single bidder based on their bid value and reasoning."""
-    if bid is None:
-        return 0.0
-    span = max(budget - cost, 1.0)
-    bid_score = max(0.0, min(1.0, 1.0 - (bid - cost) / span))
-    has_bad_reasoning = any(kw in reasoning.lower() for kw in _COLLUSION_KEYWORDS)
-    reasoning_penalty = 0.3 if has_bad_reasoning else 0.0
-    return max(0.0, bid_score - reasoning_penalty)
-
-
-def _rule_based_score(
-    bid_a: Optional[float],
-    bid_b: Optional[float],
-    reasoning_a: str,
-    reasoning_b: str,
-    cost: float,
-    budget: float,
-) -> Tuple[float, float]:
-    """
-    Fallback scorer when JUDGE_API_KEY is not set.
-    Scores each bidder independently on bid value and reasoning quality.
-    """
-    score_a = _rule_based_score_one(bid_a, reasoning_a, cost, budget)
-    score_b = _rule_based_score_one(bid_b, reasoning_b, cost, budget)
-    return score_a, score_b
-
-
 def _parse_two_scores(text: str) -> Optional[Tuple[float, float]]:
     """Parse Score A and Score B from judge output."""
     pattern_a = re.search(r"score\s*a[:\s]+([01](?:\.\d+)?|\.\d+)", text.lower())
@@ -128,7 +91,10 @@ def score_round_competitiveness(
     base_url = os.environ.get("JUDGE_BASE_URL", "").strip() or None
 
     if not api_key:
-        return _rule_based_score(bid_a, bid_b, reasoning_a, reasoning_b, cost, budget)
+        raise RuntimeError(
+            "JUDGE_API_KEY environment variable is not set. "
+            "Set it to your judge model API key before starting training."
+        )
 
     prompt = _JUDGE_PROMPT.format(
         cost=cost,
@@ -144,8 +110,8 @@ def score_round_competitiveness(
     except ValueError:
         raise  # configuration error (e.g. missing JUDGE_BASE_URL) — do not swallow
     except Exception:
-        # Transient API/network error — fall back silently so training is not interrupted.
-        return _rule_based_score(bid_a, bid_b, reasoning_a, reasoning_b, cost, budget)
+        # Transient API/network error — return neutral scores so training is not interrupted.
+        return 0.5, 0.5
 
 
 def _call_llm(prompt: str, api_key: str, model: str, base_url: Optional[str]) -> Tuple[float, float]:

@@ -70,6 +70,18 @@ env_max_steps=5
 # history_length = how many past rounds each agent sees in its prompt.
 env_history_length=5
 
+###################### Reward Weights ######################################
+profit_weight=1.0           # scale factor for normalized profit component
+detector_penalty_weight=1.0 # scale factor for Detector collusion penalty on final round
+ci_norm_range=0.5           # CI normalisation range (CI=1+ci_norm_range → normalized_CI=1.0)
+
+###################### Data / Model Lengths ################################
+max_prompt_length=4096
+max_response_length=512
+
+###################### Training Penalties ##################################
+invalid_action_penalty_coef=0.1
+
 ###################### Experiment Naming ##################################
 model_name_tag=$(jq -r '.[]' <<< "$model_ids" | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
 experiment_name="drmas_bidding_share${model_sharing}_${model_name_tag}"
@@ -82,8 +94,8 @@ python3 -m verl.trainer.main_ppo \
     data.val_files=$VAL_DATA \
     data.train_batch_size=$train_data_size \
     data.val_batch_size=$val_data_size \
-    data.max_prompt_length=4096 \
-    data.max_response_length=512 \
+    data.max_prompt_length=$max_prompt_length \
+    data.max_response_length=$max_response_length \
     data.filter_overlong_prompts=True \
     data.truncation='middle' \
     data.return_raw_chat=True \
@@ -111,11 +123,14 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.95 \
     actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
     actor_rollout_ref.actor.use_invalid_action_penalty=True \
-    actor_rollout_ref.actor.invalid_action_penalty_coef=0.1 \
+    actor_rollout_ref.actor.invalid_action_penalty_coef=$invalid_action_penalty_coef \
     env.env_name=bidding \
     env.seed=0 \
     env.max_steps=$env_max_steps \
     env.history_length=$env_history_length \
+    env.bidding.reward.profit_weight=$profit_weight \
+    env.bidding.reward.detector_penalty_weight=$detector_penalty_weight \
+    env.bidding.reward.ci_norm_range=$ci_norm_range \
     env.rollout.n=$group_size \
     env.rollout.val_n=$val_group_size \
     agent.agent_ids="$agent_ids" \

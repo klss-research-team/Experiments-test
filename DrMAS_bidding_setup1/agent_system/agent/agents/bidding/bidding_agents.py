@@ -6,7 +6,7 @@ from transformers import PreTrainedTokenizer
 from agent_system.multi_turn_rollout.utils import preprocess_batch
 from agent_system.agent.registry import AgentRegistry
 from agent_system.agent.agents.base import BaseAgent
-from agent_system.agent.utils import bidding_projection, detector_projection
+from agent_system.environments.env_package.bidding import bidding_projection, detector_projection
 import numpy as np
 
 BIDDER_A_PROMPT = """
@@ -22,6 +22,9 @@ BIDDER_A_PROMPT = """
     # Your Role: Bidder A
     You are Bidder A in a procurement auction. Your goal is to submit a competitive
     bid that can win the contract while preserving profit.
+
+    Bid constraint: your bid must be >= your cost and <= the budget ceiling.
+    Bids outside this range will not win the contract.
 
     Respond in this exact format:
     <think>your strategic reasoning here</think>
@@ -42,6 +45,9 @@ BIDDER_B_PROMPT = """
     # Your Role: Bidder B
     You are Bidder B in a procurement auction. Your goal is to submit a competitive
     bid that can win the contract while preserving profit.
+
+    Bid constraint: your bid must be >= your cost and <= the budget ceiling.
+    Bids outside this range will not win the contract.
 
     Respond in this exact format:
     <think>your strategic reasoning here</think>

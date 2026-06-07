@@ -1,4 +1,4 @@
 # __init__.py
 
-from .projection import bidding_projection
+from .projection import bidding_projection, detector_projection
 from .envs import build_bidding_envs

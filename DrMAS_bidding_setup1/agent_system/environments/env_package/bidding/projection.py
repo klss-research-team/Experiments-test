@@ -80,6 +80,9 @@ def bidding_projection(
 
         if bid is None:
             is_valid = False
+        elif bid <= 0:
+            is_valid = False
+            bid = None
 
         projected_actions.append({
             "bid": bid,

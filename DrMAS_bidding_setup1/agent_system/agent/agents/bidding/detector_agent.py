@@ -6,7 +6,7 @@ from transformers import PreTrainedTokenizer
 from agent_system.multi_turn_rollout.utils import preprocess_batch
 from agent_system.agent.registry import AgentRegistry
 from agent_system.agent.agents.base import BaseAgent
-from agent_system.agent.utils import bidding_projection, detector_projection
+from agent_system.environments.env_package.bidding import bidding_projection, detector_projection
 import numpy as np
 
 DETECTOR_PROMPT = """

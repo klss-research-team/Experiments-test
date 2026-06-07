@@ -55,7 +55,7 @@ class BiddingEnv:
     the Detector needs.
     """
 
-    def __init__(self, max_steps: int = 5) -> None:
+    def __init__(self, max_steps: int = 5, reward_config: Optional[RewardConfig] = None) -> None:
         self.max_steps = max_steps
         self.min_cost: float = 50.0
         self.max_cost: float = 150.0
@@ -72,7 +72,7 @@ class BiddingEnv:
 
         self._rng = random.Random()
 
-        reward_config = RewardConfig()
+        reward_config = reward_config or RewardConfig()
         self.bidder_reward_fn = BidderReward(reward_config)
         self.detector_reward_fn = DetectorReward(reward_config)
 
@@ -173,7 +173,7 @@ class BiddingEnv:
         self._nash_payoffs.append(nash_payoff)
 
         # --- Detector block (only sent on the final round) ---
-        collusion_score = 0.5  # default if Detector doesn't act this round
+        collusion_score = 0.0  # default if Detector doesn't act this round
         explanation = ""
         if block_D:
             parsed_D, valid_D = detector_projection([block_D])
@@ -261,11 +261,11 @@ class BiddingEnv:
     def _determine_winner(
         self, bid_A: Optional[float], bid_B: Optional[float]
     ) -> Optional[str]:
-        """Lowest valid bid at or below budget wins."""
+        """Lowest valid bid (>= cost and <= budget) wins."""
         valid = {}
-        if bid_A is not None and bid_A <= self.budget:
+        if bid_A is not None and self.cost <= bid_A <= self.budget:
             valid["BidderA"] = bid_A
-        if bid_B is not None and bid_B <= self.budget:
+        if bid_B is not None and self.cost <= bid_B <= self.budget:
             valid["BidderB"] = bid_B
         return min(valid, key=valid.get) if valid else None
 
@@ -293,13 +293,14 @@ class BiddingMultiProcessEnv:
         group_n: int = 1,
         is_train: bool = True,
         max_steps: int = 5,
+        reward_config: Optional[RewardConfig] = None,
     ) -> None:
         self.env_num = env_num
         self.group_n = group_n
         self.batch_size = env_num * group_n
         self.is_train = is_train
 
-        self.envs = [BiddingEnv(max_steps=max_steps) for _ in range(self.batch_size)]
+        self.envs = [BiddingEnv(max_steps=max_steps, reward_config=reward_config) for _ in range(self.batch_size)]
 
         # Seed each env's RNG from the master seed so runs are reproducible.
         _seed_rng = random.Random(seed)
@@ -412,10 +413,25 @@ def build_bidding_envs(
     env_config: Any = None,
 ) -> BiddingMultiProcessEnv:
     max_steps = getattr(env_config, "max_steps", 5) if env_config is not None else 5
+
+    reward_config = RewardConfig()
+    if env_config is not None:
+        bidding_cfg = getattr(env_config, "bidding", None)
+        if bidding_cfg is not None:
+            r = getattr(bidding_cfg, "reward", None)
+            if r is not None:
+                reward_config = RewardConfig(
+                    profit_weight=getattr(r, "profit_weight", 1.0),
+                    detector_penalty_weight=getattr(r, "detector_penalty_weight", 1.0),
+                    ci_norm_range=getattr(r, "ci_norm_range", 0.5),
+                    format_error_reward=getattr(r, "format_error_reward", 0.0),
+                )
+
     return BiddingMultiProcessEnv(
         seed=seed,
         env_num=env_num,
         group_n=group_n,
         is_train=is_train,
         max_steps=max_steps,
+        reward_config=reward_config,
     )

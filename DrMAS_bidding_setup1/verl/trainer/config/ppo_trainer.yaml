@@ -327,3 +327,9 @@ env:
     search_url: "http://127.0.0.1:8000/retrieve" # also support multiple urls: ["http://127.0.0.1:8000/retrieve", "http://127.0.0.1:8001/retrieve"]
     topk: 3
     timeout: 60
+  bidding:
+    reward:
+      profit_weight: 1.0           # scale factor for normalized profit component
+      detector_penalty_weight: 1.0 # scale factor for Detector collusion penalty on final round
+      ci_norm_range: 0.5           # CI=1+ci_norm_range maps to normalized_CI=1.0 (fully collusive)
+      format_error_reward: 0.0     # reward for unparseable action
