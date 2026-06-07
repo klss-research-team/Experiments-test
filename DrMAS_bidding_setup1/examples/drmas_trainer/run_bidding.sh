@@ -73,7 +73,7 @@ env_history_length=5
 ###################### Reward Weights ######################################
 profit_weight=1.0           # scale factor for normalized profit component
 detector_penalty_weight=1.0 # scale factor for Detector collusion penalty on final round
-ci_norm_range=0.5           # CI normalisation range (CI=1+ci_norm_range → normalized_CI=1.0)
+ci_norm_range=0.3           # CI normalisation range (CI=1+ci_norm_range → normalized_CI=1.0)
 
 ###################### Data / Model Lengths ################################
 max_prompt_length=4096

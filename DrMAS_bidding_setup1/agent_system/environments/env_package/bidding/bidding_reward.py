@@ -20,7 +20,7 @@ class RewardConfig:
 
     # Detector: CI is normalized as min(1, (CI-1)/ci_norm_range)
     # so CI=1.0 → 0.0 (competitive), CI=1.0+ci_norm_range → 1.0 (fully collusive)
-    ci_norm_range: float = 0.5
+    ci_norm_range: float = 0.3
 
     # General constants
     format_error_reward: float = 0.0
