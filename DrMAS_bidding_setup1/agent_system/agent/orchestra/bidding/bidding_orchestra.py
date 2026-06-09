@@ -48,11 +48,16 @@ class BiddingMultiAgentOrchestra(BaseOrchestra):
     """
     Multi-agent orchestra for procurement bidding.
 
-    Execution order alternates each round to avoid a fixed information advantage:
+    Sealed-bid design — bidders cannot see each other's current-round bid before submitting.
+    Both bidders run with the same pre-round team_context (empty each round via
+    initialize_context), so neither has access to the other's current bid. After both
+    submit, team_context is updated with both responses. The Detector then runs on the
+    final round with the full team_context (both current-round bids) plus past-round
+    history via BiddingMemory in env_prompt.
+
+    Execution order alternates each round to avoid a fixed positional advantage:
       Odd rounds  (1, 3, 5): BidderB → BidderA → Detector
       Even rounds (2, 4):    BidderA → BidderB → Detector
-    The second bidder each round sees the first bidder's response via team_context.
-    Detector runs on the final round only and sees the full episode history.
     """
 
     BIDDER_A = "BidderA"
@@ -116,48 +121,52 @@ class BiddingMultiAgentOrchestra(BaseOrchestra):
             active_masks,
         ).astype(bool)
 
-        if step % 2 == 0:
-            current_order = [self.BIDDER_A, self.BIDDER_B, self.DETECTOR]
-        else:
-            current_order = [self.BIDDER_B, self.BIDDER_A, self.DETECTOR]
-
-        # Detector sees the full episode history — run it only on the final round.
         is_final_round = (step >= self.max_steps)
 
-        for agent_id in current_order:
+        # Sealed-bid phase: both bidders run with the same pre-round context so
+        # neither can see the other's current bid before submitting.
+        pre_round_context = list(team_context)  # snapshot — empty at round start
+
+        bidder_order = (
+            [self.BIDDER_A, self.BIDDER_B] if step % 2 == 0
+            else [self.BIDDER_B, self.BIDDER_A]
+        )
+
+        for agent_id in bidder_order:
             if not agent_active_mask.any():
                 break
-
-            if agent_id == self.DETECTOR and not is_final_round:
-                continue
-
-            actor_rollout_wg = actor_rollout_wgs[
-                self.agents_to_wg_mapping[agent_id]
-            ]
 
             batch, text_responses = self.agents[agent_id].call(
                 gen_batch=gen_batch,
                 env_obs=env_obs,
-                team_context=team_context,
-                actor_rollout_wg=actor_rollout_wg,
+                team_context=pre_round_context,
+                actor_rollout_wg=actor_rollout_wgs[self.agents_to_wg_mapping[agent_id]],
                 agent_active_mask=agent_active_mask,
                 step=step,
             )
 
             team_context = update_team_context(
-                agent_id,
-                team_context,
-                text_responses,
-                agent_active_mask,
+                agent_id, team_context, text_responses, agent_active_mask,
             )
-
             text_actions = update_text_action(
-                text_actions,
-                text_responses,
-                agent_id,
-                agent_active_mask,
+                text_actions, text_responses, agent_id, agent_active_mask,
             )
-
             self.save_to_buffer(agent_id, batch)
+
+        # Detector phase: runs on the final round only.
+        # Sees both current-round bids via team_context + full history via env_prompt.
+        if is_final_round and agent_active_mask.any():
+            batch, text_responses = self.agents[self.DETECTOR].call(
+                gen_batch=gen_batch,
+                env_obs=env_obs,
+                team_context=team_context,
+                actor_rollout_wg=actor_rollout_wgs[self.agents_to_wg_mapping[self.DETECTOR]],
+                agent_active_mask=agent_active_mask,
+                step=step,
+            )
+            text_actions = update_text_action(
+                text_actions, text_responses, self.DETECTOR, agent_active_mask,
+            )
+            self.save_to_buffer(self.DETECTOR, batch)
 
         return text_actions, self.multiagent_batch_buffer
