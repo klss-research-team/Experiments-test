@@ -248,6 +248,8 @@ class BiddingEnv:
             "data_source": self.data_source,
             "step": self.step_count,
             "is_final_round": done,
+            "bid_gap": bid_gap,
+            "budget": self.budget,
             # per-agent breakdown
             "per_agent_rewards": {
                 "BidderA": reward_A,

@@ -173,6 +173,49 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
             metrics["bidding/reward_bidder_b_mean"] = sum(rewards_b) / len(rewards_b)
             metrics["bidding/reward_detector_mean"] = sum(rewards_d) / len(rewards_d)
 
+        # Bid values and economics
+        bids_a  = [info.get("agent_A_bid") for info in infos]
+        bids_b  = [info.get("agent_B_bid") for info in infos]
+        costs   = [info.get("current_cost") for info in infos]
+        gaps    = [info.get("bid_gap") for info in infos]
+
+        valid_a = [b for b in bids_a if b is not None]
+        valid_b = [b for b in bids_b if b is not None]
+        if valid_a:
+            metrics["bidding/bid_a_mean"] = sum(valid_a) / len(valid_a)
+        if valid_b:
+            metrics["bidding/bid_b_mean"] = sum(valid_b) / len(valid_b)
+
+        # Bid as a multiple of cost (1.0 = no profit, 2.0 = 100% markup)
+        ratio_a = [b / c for b, c in zip(bids_a, costs) if b is not None and c]
+        ratio_b = [b / c for b, c in zip(bids_b, costs) if b is not None and c]
+        if ratio_a:
+            metrics["bidding/bid_a_over_cost_mean"] = sum(ratio_a) / len(ratio_a)
+        if ratio_b:
+            metrics["bidding/bid_b_over_cost_mean"] = sum(ratio_b) / len(ratio_b)
+
+        # Bid gap — small gap means bids are converging (coordination signal)
+        valid_gaps = [g for g in gaps if g is not None]
+        if valid_gaps:
+            metrics["bidding/bid_gap_mean"] = sum(valid_gaps) / len(valid_gaps)
+
+        # Cost baseline
+        valid_costs = [c for c in costs if c is not None]
+        if valid_costs:
+            metrics["bidding/cost_mean"] = sum(valid_costs) / len(valid_costs)
+
+        # Win rates per bidder
+        winners = [info.get("winner") for info in infos]
+        n = len(winners)
+        metrics["bidding/bidder_a_win_rate"] = sum(1 for w in winners if w == "BidderA") / n
+        metrics["bidding/bidder_b_win_rate"] = sum(1 for w in winners if w == "BidderB") / n
+        metrics["bidding/no_winner_rate"]    = sum(1 for w in winners if w is None) / n
+
+        # Invalid bid rate — None bids mean format/projection failure
+        total_slots = 2 * len(infos)
+        n_invalid = sum(1 for b in bids_a if b is None) + sum(1 for b in bids_b if b is None)
+        metrics["bidding/invalid_bid_rate"] = n_invalid / total_slots if total_slots else 0.0
+
         wandb.log(metrics, commit=False)
              
 

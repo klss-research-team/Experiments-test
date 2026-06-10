@@ -15,6 +15,16 @@ if [ "$MODE" == "eval" ] || [ "$MODE" == "evaluation" ]; then
     train_data_size=16
     val_data_size=64
     val_group_size=8   # pass@8 / avg@8
+    total_epochs=5
+elif [ "$MODE" == "quick" ]; then
+    echo "Running in quick mode (diagnostic — 1 epoch, small batch)"
+    VAL_ONLY=False
+    TRAIN_DATA="$HOME/data/drmas_bidding/train.parquet"
+    VAL_DATA="$HOME/data/drmas_bidding/test.parquet"
+    train_data_size=32
+    val_data_size=16
+    val_group_size=1
+    total_epochs=1
 else
     echo "Running in training mode"
     VAL_ONLY=False
@@ -23,6 +33,7 @@ else
     train_data_size=32
     val_data_size=32
     val_group_size=1
+    total_epochs=5
 fi
 
 ###################### LLM Judge Configuration #############################
@@ -38,9 +49,15 @@ fi
 #   Together: export JUDGE_API_KEY="..."  JUDGE_MODEL="meta-llama/..."  JUDGE_BASE_URL="https://api.together.xyz/v1"
 #   vLLM    : export JUDGE_API_KEY="token"  JUDGE_MODEL="your-model"  JUDGE_BASE_URL="http://localhost:8000/v1"
 #
-# JUDGE_API_KEY is required — training will raise an error if it is not set.
+# JUDGE_API_KEY and JUDGE_MODEL are required — training will raise an error if not set.
+# JUDGE_BASE_URL is required for non-OpenAI endpoints (e.g. OpenRouter, vLLM).
+#
+# OpenRouter example:
+#   export JUDGE_API_KEY="sk-or-v1-..."
+#   export JUDGE_MODEL="openai/gpt-4o-mini"        # or any OpenRouter model ID
+#   export JUDGE_BASE_URL="https://openrouter.ai/api/v1"
 : "${JUDGE_API_KEY:=}"
-: "${JUDGE_MODEL:=gpt-4o-mini}"
+: "${JUDGE_MODEL:=}"
 : "${JUDGE_BASE_URL:=}"
 
 ###################### Algorithm Configurations ############################
@@ -85,6 +102,24 @@ invalid_action_penalty_coef=0.1
 ###################### Experiment Naming ##################################
 model_name_tag=$(jq -r '.[]' <<< "$model_ids" | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
 experiment_name="drmas_bidding_share${model_sharing}_${model_name_tag}"
+
+###################### Startup Summary ####################################
+echo ""
+echo "=== DrMAS Bidding Run ==="
+echo "  mode             : $MODE"
+echo "  model            : $(jq -r '.[0]' <<< "$model_ids") (all agents)"
+echo "  agents           : $agent_ids"
+echo "  epochs           : $total_epochs"
+echo "  train_data_size  : $train_data_size"
+echo "  group_size       : $group_size"
+echo "  profit_weight    : $profit_weight"
+echo "  detector_penalty : $detector_penalty_weight"
+echo "  ci_norm_range    : $ci_norm_range"
+echo "  max_response_len : $max_response_length"
+echo "  judge model      : ${JUDGE_MODEL:-NOT SET}"
+echo "  judge base url   : ${JUDGE_BASE_URL:-NOT SET}"
+echo "========================="
+echo ""
 
 ###################### Launch #############################################
 python3 -m verl.trainer.main_ppo \
@@ -145,6 +180,6 @@ python3 -m verl.trainer.main_ppo \
     trainer.nnodes=1 \
     trainer.save_freq=100 \
     trainer.test_freq=10 \
-    trainer.total_epochs=5 \
+    trainer.total_epochs=$total_epochs \
     trainer.val_before_train=True \
     trainer.val_only=$VAL_ONLY

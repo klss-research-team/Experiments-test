@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import json
 import os
 import random
 
@@ -197,6 +198,62 @@ def _hub_to_row(raw_row: dict, idx: int, split: str) -> dict:
     )
 
 
+def load_from_local(path: str, test_ratio: float = 0.1, seed: int = 42):
+    """
+    Load a dataset from a local JSON file (array) or JSONL file (one object per line).
+    Validates, splits into train/test, and converts to training row format.
+
+    Expected fields per row: task_description, min_cost, max_cost, budget, category.
+    Returns (train_dataset, test_dataset).
+    """
+    path = os.path.expanduser(path)
+    with open(path, "r", encoding="utf-8") as f:
+        first_char = f.read(1)
+        f.seek(0)
+        if first_char == "[":
+            raw = json.load(f)
+        else:
+            raw = [json.loads(line) for line in f if line.strip()]
+
+    print(f"Loaded {len(raw)} rows from {path}")
+
+    required = ("task_description", "min_cost", "max_cost", "budget", "category")
+    valid, skipped = [], 0
+    for i, row in enumerate(raw):
+        missing = [c for c in required if c not in row or row[c] is None]
+        if missing:
+            print(f"  [skip] row {i}: missing fields {missing}")
+            skipped += 1
+            continue
+        if float(row["budget"]) <= float(row["max_cost"]):
+            print(f"  [skip] row {i}: budget ({row['budget']}) must be > max_cost ({row['max_cost']})")
+            skipped += 1
+            continue
+        if float(row["max_cost"]) <= float(row["min_cost"]):
+            print(f"  [skip] row {i}: max_cost ({row['max_cost']}) must be > min_cost ({row['min_cost']})")
+            skipped += 1
+            continue
+        valid.append(dict(row))
+
+    print(f"Validation complete: {len(valid)} valid rows, {skipped} skipped.")
+    if not valid:
+        raise ValueError(
+            "No valid rows found. Each row must have: "
+            "task_description, min_cost, max_cost, budget, category — "
+            "and budget > max_cost > min_cost."
+        )
+
+    rng = random.Random(seed)
+    rng.shuffle(valid)
+    split_at = max(1, int(len(valid) * (1 - test_ratio)))
+    train_rows = valid[:split_at]
+    test_rows  = valid[split_at:]
+
+    train_ds = Dataset.from_list([_hub_to_row(r, i, "train") for i, r in enumerate(train_rows)])
+    test_ds  = Dataset.from_list([_hub_to_row(r, i, "test")  for i, r in enumerate(test_rows)])
+    return train_ds, test_ds
+
+
 def load_from_hub(dataset_id: str, test_ratio: float = 0.1, seed: int = 42):
     """
     Load a dataset from HuggingFace Hub, validate, split, and convert.
@@ -247,17 +304,24 @@ def load_from_hub(dataset_id: str, test_ratio: float = 0.1, seed: int = 42):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Prepare DrMAS bidding dataset for training")
     parser.add_argument(
+        "--local_file", default=None,
+        help="Path to a local JSON or JSONL file. "
+             "JSON array format: [{...}, {...}]. "
+             "JSONL format: one JSON object per line. "
+             "Required fields: task_description, min_cost, max_cost, budget, category.",
+    )
+    parser.add_argument(
         "--dataset_id", default=None,
         help="HuggingFace dataset ID, e.g. 'your-org/bidding-dataset'. "
              "When set, loads real data from the Hub instead of generating synthetic scenarios.",
     )
     parser.add_argument(
         "--test_ratio", type=float, default=0.1,
-        help="Fraction of rows to use as the test split when loading from Hub (default: 0.1 = 10%%).",
+        help="Fraction of rows to use as the test split when loading from a file or Hub (default: 0.1 = 10%%).",
     )
     parser.add_argument(
         "--seed", type=int, default=42,
-        help="Random seed for the train/test split when loading from Hub (default: 42).",
+        help="Random seed for the train/test split (default: 42).",
     )
     parser.add_argument("--local_dir",   default="~/data/drmas_bidding")
     parser.add_argument("--train_size",  type=int, default=5000, help="Synthetic generator only.")
@@ -269,7 +333,10 @@ if __name__ == "__main__":
     local_dir = os.path.expanduser(args.local_dir)
     os.makedirs(local_dir, exist_ok=True)
 
-    if args.dataset_id:
+    if args.local_file:
+        print(f"Loading dataset from local file: {args.local_file}")
+        train_dataset, test_dataset = load_from_local(args.local_file, args.test_ratio, args.seed)
+    elif args.dataset_id:
         print(f"Loading dataset from HuggingFace Hub: {args.dataset_id}")
         train_dataset, test_dataset = load_from_hub(args.dataset_id, args.test_ratio, args.seed)
     else:
