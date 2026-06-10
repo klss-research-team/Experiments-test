@@ -21,8 +21,10 @@ from datasets import Dataset
 # ---------------------------------------------------------------------------
 # Contract scenario templates
 # Each entry: (category, description_template, cost_range, budget_multiplier_range)
-# cost_range       : (min_cost, max_cost) in dollars
-# budget_multiplier: budget = cost * U(lo, hi)  — buyer always has headroom
+# cost_range       : (cost_floor, cost_ceiling) — absolute bounds for the category.
+#                    min_cost and max_cost are sampled randomly within these bounds
+#                    each scenario so every row has a distinct cost window.
+# budget_multiplier: budget = max_cost * U(lo, hi)  — buyer always has headroom
 # ---------------------------------------------------------------------------
 SCENARIO_TEMPLATES = [
     (
@@ -99,7 +101,11 @@ def _sample_scenario(rng: random.Random) -> dict:
         SCENARIO_TEMPLATES
     )
 
-    min_cost, max_cost = cost_range
+    cost_floor, cost_ceiling = cost_range
+    # Sample a random cost window within the category bounds so every scenario
+    # has a distinct min_cost and max_cost, not just a distinct budget.
+    min_cost = round(rng.uniform(cost_floor, cost_floor + (cost_ceiling - cost_floor) * 0.5), 2)
+    max_cost = round(rng.uniform(min_cost * 1.2, cost_ceiling), 2)
     budget_multiplier = rng.uniform(*bm_range)
     # Budget ceiling is based on max_cost so all per-round costs fit under budget.
     budget = round(max_cost * budget_multiplier, 2)
