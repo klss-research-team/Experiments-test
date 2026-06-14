@@ -109,6 +109,8 @@ max_response_length=512
 
 ###################### Hardware ############################################
 n_gpus_per_node=4   # override to 1 automatically in colab mode below
+param_offload=False          # offload model weights to CPU RAM (slower, saves GPU VRAM)
+gpu_memory_utilization=0.5   # fraction of GPU VRAM reserved for sglang KV cache
 
 ###################### Training Penalties ##################################
 invalid_action_penalty_coef=0.1
@@ -120,6 +122,8 @@ invalid_action_penalty_coef=0.1
 if [ "$MODE" == "colab" ]; then
     n_gpus_per_node=1
     actor_ppo_micro_batch_size_per_gpu='[1,1,1]'
+    param_offload=True         # 3×Qwen3-4B exceeds A100 40GB — offload weights to CPU
+    gpu_memory_utilization=0.3 # leave more VRAM for training; 0.5 causes OOM on 1 GPU
 fi
 
 ###################### Experiment Naming ##################################
@@ -140,6 +144,8 @@ echo "  detector_penalty : $detector_penalty_weight"
 echo "  ci_norm_range    : $ci_norm_range"
 echo "  max_response_len : $max_response_length"
 echo "  n_gpus_per_node  : $n_gpus_per_node"
+echo "  param_offload    : $param_offload"
+echo "  gpu_mem_util     : $gpu_memory_utilization"
 echo "  judge model      : ${JUDGE_MODEL:-NOT SET}"
 echo "  judge base url   : ${JUDGE_BASE_URL:-NOT SET}"
 echo "========================="
@@ -169,12 +175,12 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.entropy_coeff=0.001 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
-    actor_rollout_ref.actor.fsdp_config.param_offload=False \
+    actor_rollout_ref.actor.fsdp_config.param_offload=$param_offload \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
-    actor_rollout_ref.rollout.gpu_memory_utilization=0.5 \
+    actor_rollout_ref.rollout.gpu_memory_utilization=$gpu_memory_utilization \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
