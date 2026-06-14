@@ -2,7 +2,9 @@ set -x
 
 # ---------------------------------------------------------------------------
 # Usage:
-#   bash run_bidding.sh          # training mode (default)
+#   bash run_bidding.sh          # training mode (default, 4 GPUs)
+#   bash run_bidding.sh quick    # diagnostic run (1 epoch, 4 GPUs)
+#   bash run_bidding.sh colab    # single-GPU mode for Google Colab (1 epoch)
 #   bash run_bidding.sh eval     # evaluation mode (val_only)
 # ---------------------------------------------------------------------------
 
@@ -23,6 +25,15 @@ elif [ "$MODE" == "quick" ]; then
     VAL_DATA="$HOME/data/drmas_bidding/test.parquet"
     train_data_size=32
     val_data_size=16
+    val_group_size=1
+    total_epochs=1
+elif [ "$MODE" == "colab" ]; then
+    echo "Running in Colab mode (1 GPU, 1 epoch)"
+    VAL_ONLY=False
+    TRAIN_DATA="$HOME/data/drmas_bidding/train.parquet"
+    VAL_DATA="$HOME/data/drmas_bidding/test.parquet"
+    train_data_size=32
+    val_data_size=32
     val_group_size=1
     total_epochs=1
 else
@@ -96,8 +107,20 @@ ci_norm_range=0.3           # CI normalisation range (CI=1+ci_norm_range → nor
 max_prompt_length=4096
 max_response_length=512
 
+###################### Hardware ############################################
+n_gpus_per_node=4   # override to 1 automatically in colab mode below
+
 ###################### Training Penalties ##################################
 invalid_action_penalty_coef=0.1
+
+###################### Colab Single-GPU Overrides ##########################
+# Only the two settings that directly affect GPU memory are changed.
+# Everything else (group_size, batch sizes, response length) stays identical
+# so results are comparable between Colab and AWS runs.
+if [ "$MODE" == "colab" ]; then
+    n_gpus_per_node=1
+    actor_ppo_micro_batch_size_per_gpu='[1,1,1]'
+fi
 
 ###################### Experiment Naming ##################################
 model_name_tag=$(jq -r '.[]' <<< "$model_ids" | awk -F/ '{print $NF}' | tr '[:upper:]' '[:lower:]' | tr '-' '_' | paste -sd_)
@@ -116,6 +139,7 @@ echo "  profit_weight    : $profit_weight"
 echo "  detector_penalty : $detector_penalty_weight"
 echo "  ci_norm_range    : $ci_norm_range"
 echo "  max_response_len : $max_response_length"
+echo "  n_gpus_per_node  : $n_gpus_per_node"
 echo "  judge model      : ${JUDGE_MODEL:-NOT SET}"
 echo "  judge base url   : ${JUDGE_BASE_URL:-NOT SET}"
 echo "========================="
@@ -176,7 +200,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger=['console','wandb'] \
     trainer.project_name='DrMAS_bidding' \
     trainer.experiment_name="$experiment_name" \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=1 \
     trainer.save_freq=100 \
     trainer.test_freq=10 \
