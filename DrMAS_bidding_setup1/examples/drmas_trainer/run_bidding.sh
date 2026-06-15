@@ -112,6 +112,7 @@ n_gpus_per_node=4   # override to 1 automatically in colab mode below
 param_offload=False          # offload model weights to CPU RAM (slower, saves GPU VRAM)
 gpu_memory_utilization=0.5   # fraction of GPU VRAM reserved for sglang KV cache
 max_model_len=null            # null = use model default (40960); override in colab to cap KV cache
+free_cache_engine=False       # if True, sglang frees KV cache after rollout (saves memory during training)
 
 ###################### Checkpointing #######################################
 save_freq=100                          # save every N steps (AWS default)
@@ -130,9 +131,10 @@ if [ "$MODE" == "colab" ]; then
     actor_ppo_micro_batch_size_per_gpu='[1,1,1]'
     model_ids='["Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B"]'
     param_offload=True
-    gpu_memory_utilization=0.25
+    gpu_memory_utilization=0.20  # 3×8GB=24GB for sglang, ~16GB free during rollout
+    free_cache_engine=True        # release KV cache after rollout → ~30GB free during training
     max_model_len=5120
-    save_freq=1    # save after every step so training can always resume from Drive
+    save_freq=1
     checkpoint_dir=/content/drive/MyDrive/DrMAS/checkpoints
 fi
 
@@ -197,7 +199,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.max_model_len=$max_model_len \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
-    actor_rollout_ref.rollout.free_cache_engine=False \
+    actor_rollout_ref.rollout.free_cache_engine=$free_cache_engine \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.95 \
     actor_rollout_ref.rollout.val_kwargs.temperature=0.6 \
