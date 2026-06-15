@@ -113,6 +113,10 @@ param_offload=False          # offload model weights to CPU RAM (slower, saves G
 gpu_memory_utilization=0.5   # fraction of GPU VRAM reserved for sglang KV cache
 max_model_len=null            # null = use model default (40960); override in colab to cap KV cache
 
+###################### Checkpointing #######################################
+save_freq=100                          # save every N steps (AWS default)
+checkpoint_dir=checkpoints/DrMAS_bidding  # local path for AWS
+
 ###################### Training Penalties ##################################
 invalid_action_penalty_coef=0.1
 
@@ -128,6 +132,8 @@ if [ "$MODE" == "colab" ]; then
     param_offload=True
     gpu_memory_utilization=0.25
     max_model_len=5120
+    save_freq=1    # save after every step so training can always resume from Drive
+    checkpoint_dir=/content/drive/MyDrive/DrMAS/checkpoints
 fi
 
 ###################### Experiment Naming ##################################
@@ -151,6 +157,8 @@ echo "  n_gpus_per_node  : $n_gpus_per_node"
 echo "  param_offload    : $param_offload"
 echo "  gpu_mem_util     : $gpu_memory_utilization"
 echo "  max_model_len    : $max_model_len"
+echo "  save_freq        : $save_freq"
+echo "  checkpoint_dir   : $checkpoint_dir"
 echo "  judge model      : ${JUDGE_MODEL:-NOT SET}"
 echo "  judge base url   : ${JUDGE_BASE_URL:-NOT SET}"
 echo "========================="
@@ -214,7 +222,8 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name="$experiment_name" \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=1 \
-    trainer.save_freq=100 \
+    trainer.default_local_dir=$checkpoint_dir/$experiment_name \
+    trainer.save_freq=$save_freq \
     trainer.test_freq=10 \
     trainer.total_epochs=$total_epochs \
     trainer.val_before_train=True \
