@@ -113,6 +113,7 @@ param_offload=False          # offload model weights to CPU RAM (slower, saves G
 gpu_memory_utilization=0.5   # fraction of GPU VRAM reserved for sglang KV cache
 max_model_len=null            # null = use model default (40960); override in colab to cap KV cache
 free_cache_engine=False       # if True, sglang frees KV cache after rollout (saves memory during training)
+enforce_eager=False           # if True, disables CUDA graphs (required when free_cache_engine=True)
 
 ###################### Checkpointing #######################################
 save_freq=100                          # save every N steps (AWS default)
@@ -133,6 +134,7 @@ if [ "$MODE" == "colab" ]; then
     param_offload=True
     gpu_memory_utilization=0.20  # 3×8GB=24GB for sglang, ~16GB free during rollout
     free_cache_engine=True        # release KV cache after rollout → ~30GB free during training
+    enforce_eager=True            # required when free_cache_engine=True (CUDA graphs incompatible)
     max_model_len=5120
     save_freq=1
     checkpoint_dir=/content/drive/MyDrive/DrMAS/checkpoints
@@ -198,7 +200,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.gpu_memory_utilization=$gpu_memory_utilization \
     actor_rollout_ref.rollout.max_model_len=$max_model_len \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
-    actor_rollout_ref.rollout.enforce_eager=False \
+    actor_rollout_ref.rollout.enforce_eager=$enforce_eager \
     actor_rollout_ref.rollout.free_cache_engine=$free_cache_engine \
     actor_rollout_ref.rollout.val_kwargs.do_sample=True \
     actor_rollout_ref.rollout.val_kwargs.top_p=0.95 \
