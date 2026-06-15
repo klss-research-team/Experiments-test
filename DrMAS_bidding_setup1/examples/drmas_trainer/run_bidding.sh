@@ -111,19 +111,23 @@ max_response_length=512
 n_gpus_per_node=4   # override to 1 automatically in colab mode below
 param_offload=False          # offload model weights to CPU RAM (slower, saves GPU VRAM)
 gpu_memory_utilization=0.5   # fraction of GPU VRAM reserved for sglang KV cache
+max_model_len=null            # null = use model default (40960); override in colab to cap KV cache
 
 ###################### Training Penalties ##################################
 invalid_action_penalty_coef=0.1
 
 ###################### Colab Single-GPU Overrides ##########################
-# Only the two settings that directly affect GPU memory are changed.
-# Everything else (group_size, batch sizes, response length) stays identical
-# so results are comparable between Colab and AWS runs.
+# Uses Qwen3-1.7B (3.4GB each × 3 = ~10GB weights) instead of 4B (8GB × 3 = 24GB)
+# so all three separate agent models fit on a single 40GB A100.
+# gpu_memory_utilization=0.25 → 3 instances × 10GB = 30GB for sglang, ~4GB for training.
+# max_model_len=5120 caps the KV cache at 4096+512 tokens (vs model default of 40960).
 if [ "$MODE" == "colab" ]; then
     n_gpus_per_node=1
     actor_ppo_micro_batch_size_per_gpu='[1,1,1]'
-    param_offload=True         # 3×Qwen3-4B exceeds A100 40GB — offload weights to CPU
-    gpu_memory_utilization=0.3 # leave more VRAM for training; 0.5 causes OOM on 1 GPU
+    model_ids='["Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B"]'
+    param_offload=True
+    gpu_memory_utilization=0.25
+    max_model_len=5120
 fi
 
 ###################### Experiment Naming ##################################
@@ -146,6 +150,7 @@ echo "  max_response_len : $max_response_length"
 echo "  n_gpus_per_node  : $n_gpus_per_node"
 echo "  param_offload    : $param_offload"
 echo "  gpu_mem_util     : $gpu_memory_utilization"
+echo "  max_model_len    : $max_model_len"
 echo "  judge model      : ${JUDGE_MODEL:-NOT SET}"
 echo "  judge base url   : ${JUDGE_BASE_URL:-NOT SET}"
 echo "========================="
@@ -181,6 +186,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
     actor_rollout_ref.rollout.gpu_memory_utilization=$gpu_memory_utilization \
+    actor_rollout_ref.rollout.max_model_len=$max_model_len \
     actor_rollout_ref.rollout.enable_chunked_prefill=False \
     actor_rollout_ref.rollout.enforce_eager=False \
     actor_rollout_ref.rollout.free_cache_engine=False \
