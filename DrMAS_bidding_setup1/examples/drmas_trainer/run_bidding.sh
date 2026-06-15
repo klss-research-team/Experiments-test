@@ -123,14 +123,16 @@ checkpoint_dir=checkpoints/DrMAS_bidding  # local path for AWS
 invalid_action_penalty_coef=0.1
 
 ###################### Colab Single-GPU Overrides ##########################
-# Uses Qwen3-1.7B (3.4GB each × 3 = ~10GB weights) instead of 4B (8GB × 3 = 24GB)
-# so all three separate agent models fit on a single 40GB A100.
-# gpu_memory_utilization=0.25 → 3 instances × 10GB = 30GB for sglang, ~4GB for training.
-# max_model_len=5120 caps the KV cache at 4096+512 tokens (vs model default of 40960).
+# Uses Qwen3-0.6B (1.2GB each × 3 = ~3.6GB weights) to fit three separate agent
+# models on a single 40GB A100 with headroom to spare during initialization.
+# gpu_memory_utilization=0.20 → 3 sglang instances × 8GB = 24GB, ~10GB headroom.
+# max_model_len=5120 caps the KV cache at 4096+512 tokens (vs model default of 32768).
+# Enable High-RAM in Colab (Runtime → Change runtime type) to give param_offload
+# plenty of CPU RAM (~52GB vs default ~12GB).
 if [ "$MODE" == "colab" ]; then
     n_gpus_per_node=1
     actor_ppo_micro_batch_size_per_gpu='[1,1,1]'
-    model_ids='["Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B","Qwen/Qwen3-1.7B"]'
+    model_ids='["Qwen/Qwen3-0.6B","Qwen/Qwen3-0.6B","Qwen/Qwen3-0.6B"]'
     param_offload=True
     gpu_memory_utilization=0.20  # 3×8GB=24GB for sglang, ~16GB free during rollout
     free_cache_engine=True        # release KV cache after rollout → ~30GB free during training
