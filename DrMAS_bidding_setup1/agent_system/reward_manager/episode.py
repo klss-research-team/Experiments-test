@@ -90,6 +90,8 @@ class EpisodeRewardManager:
                 print(f"[{data_source}][{agent_id}][prompt]", prompt_str)
                 print(f"[{data_source}][{agent_id}][response]", response_str)
                 print("[score]", score)
+                print("[bid]", data_item.non_tensor_batch.get('bid'))
+                print("[judge_score]", data_item.non_tensor_batch.get('judge_score'))
 
         if return_dict:
             return {

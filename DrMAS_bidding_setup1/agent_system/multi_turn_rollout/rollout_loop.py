@@ -492,6 +492,22 @@ class MultiAgentTrajectoryCollector(TrajectoryCollector):
                     for i, info in enumerate(infos)
                 ], dtype=np.float32)
                 agent_batch.non_tensor_batch['rewards'] = _agent_step_rewards.astype(object)
+                # Per-agent bid and judge score, for console visibility into per-round behavior.
+                # Detector has no bid and is only scored (collusion_score) on the final round.
+                if agent_id == 'BidderA':
+                    _agent_bids = [info.get('agent_A_bid') for info in infos]
+                    _agent_judge_scores = [info.get('judge_score_a') for info in infos]
+                elif agent_id == 'BidderB':
+                    _agent_bids = [info.get('agent_B_bid') for info in infos]
+                    _agent_judge_scores = [info.get('judge_score_b') for info in infos]
+                else:
+                    _agent_bids = [None for _ in infos]
+                    _agent_judge_scores = [
+                        info.get('collusion_score') if info.get('is_final_round') else None
+                        for info in infos
+                    ]
+                agent_batch.non_tensor_batch['bid'] = np.array(_agent_bids, dtype=object)
+                agent_batch.non_tensor_batch['judge_score'] = np.array(_agent_judge_scores, dtype=object)
                 agent_batch.non_tensor_batch['active_masks'] = torch_to_numpy(active_masks, is_object=True)
                 agent_batch_list: list[dict] = to_list_of_dict(agent_batch)
                 for i in range(batch_size):

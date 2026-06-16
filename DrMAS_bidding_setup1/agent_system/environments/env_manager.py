@@ -111,9 +111,8 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
             for i, info in enumerate(infos):
                 info["is_action_valid"] = to_numpy(valids[i])
 
-        # Log bidding-specific metrics to WandB on the final round of each episode
-        if infos[0].get("is_final_round", False):
-            self._log_wandb_metrics(infos)
+        # Log bidding-specific metrics to WandB every round
+        self._log_wandb_metrics(infos)
 
         # convert outputs
         rewards = to_numpy(rewards)
