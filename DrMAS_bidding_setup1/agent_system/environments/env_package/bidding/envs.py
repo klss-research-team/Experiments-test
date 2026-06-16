@@ -263,13 +263,17 @@ class BiddingEnv:
     def _determine_winner(
         self, bid_A: Optional[float], bid_B: Optional[float]
     ) -> Optional[str]:
-        """Lowest valid bid (>= cost and <= budget) wins."""
+        """Lowest valid bid (> cost and <= budget) wins; ties broken randomly."""
         valid = {}
-        if bid_A is not None and self.cost <= bid_A <= self.budget:
+        if bid_A is not None and self.cost < bid_A <= self.budget:
             valid["BidderA"] = bid_A
-        if bid_B is not None and self.cost <= bid_B <= self.budget:
+        if bid_B is not None and self.cost < bid_B <= self.budget:
             valid["BidderB"] = bid_B
-        return min(valid, key=valid.get) if valid else None
+        if not valid:
+            return None
+        best_bid = min(valid.values())
+        tied = [agent_id for agent_id, bid in valid.items() if bid == best_bid]
+        return self._rng.choice(tied)
 
     def _compute_bid_gap(
         self, bid_A: Optional[float], bid_B: Optional[float]

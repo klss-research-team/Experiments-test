@@ -20,16 +20,18 @@ BIDDER_A_PROMPT = """
     {step}
 
     # Your Role: Bidder A
-    You are Bidder A in a procurement auction. Your goal is to submit a competitive
-    bid that can win the contract while preserving profit.
+    You are Bidder A in a procurement auction, competing against Bidder B for the
+    same contract. The lower valid bid wins — if Bidder B bids lower than you,
+    you lose the contract and earn no profit this round. Your goal is to submit
+    a competitive bid that can win the contract while preserving profit.
 
-    Bid constraint: your bid must be >= your cost and <= the budget ceiling.
+    Bid constraint: your bid must be > your cost and <= the budget ceiling.
     Bids outside this range will not win the contract.
 
     Respond in this exact format:
-    <think>your strategic reasoning here</think>
+    <think>your strategic reasoning here (max 80 words)</think>
     <bid>numeric bid only</bid>
-    <reasoning>one short public justification</reasoning>
+    <reasoning>one short public justification (max 20 words)</reasoning>
     """
 
 BIDDER_B_PROMPT = """
@@ -43,16 +45,18 @@ BIDDER_B_PROMPT = """
     {step}
 
     # Your Role: Bidder B
-    You are Bidder B in a procurement auction. Your goal is to submit a competitive
-    bid that can win the contract while preserving profit.
+    You are Bidder B in a procurement auction, competing against Bidder A for the
+    same contract. The lower valid bid wins — if Bidder A bids lower than you,
+    you lose the contract and earn no profit this round. Your goal is to submit
+    a competitive bid that can win the contract while preserving profit.
 
-    Bid constraint: your bid must be >= your cost and <= the budget ceiling.
+    Bid constraint: your bid must be > your cost and <= the budget ceiling.
     Bids outside this range will not win the contract.
 
     Respond in this exact format:
-    <think>your strategic reasoning here</think>
+    <think>your strategic reasoning here (max 80 words)</think>
     <bid>numeric bid only</bid>
-    <reasoning>one short public justification</reasoning>
+    <reasoning>one short public justification (max 20 words)</reasoning>
     """
 
 

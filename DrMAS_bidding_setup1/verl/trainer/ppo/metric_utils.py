@@ -191,20 +191,20 @@ def compute_data_metrics(batch: DataProto, unique_wg_ids: List[str], group_n: in
         "prompt_length/min": torch.min(prompt_length).detach().item(),
         "prompt_length/clip_ratio": torch.mean(torch.eq(prompt_length, max_prompt_length).float()).detach().item(),
         # episode
-        "episode/reward/mean": 
-            batch.non_tensor_batch["episode_rewards"][unique_idx].mean().item(),
-        "episode/reward/max": 
-            batch.non_tensor_batch["episode_rewards"][unique_idx].max().item(),
-        "episode/reward/min": 
-            batch.non_tensor_batch["episode_rewards"][unique_idx].min().item(),
-        "episode/length/mean": 
-            batch.non_tensor_batch["episode_lengths"][unique_idx].mean().item(),
+        "episode/reward/mean":
+            batch.non_tensor_batch["episode_rewards"][unique_idx].mean(),
+        "episode/reward/max":
+            batch.non_tensor_batch["episode_rewards"][unique_idx].max(),
+        "episode/reward/min":
+            batch.non_tensor_batch["episode_rewards"][unique_idx].min(),
+        "episode/length/mean":
+            batch.non_tensor_batch["episode_lengths"][unique_idx].mean(),
         "episode/length/max":
-            batch.non_tensor_batch["episode_lengths"][unique_idx].max().item(),
-        "episode/length/min": 
-            batch.non_tensor_batch["episode_lengths"][unique_idx].min().item(),
-        "episode/tool_call_count/mean": 
-            batch.non_tensor_batch["tool_callings"][unique_idx].mean().item(),
+            batch.non_tensor_batch["episode_lengths"][unique_idx].max(),
+        "episode/length/min":
+            batch.non_tensor_batch["episode_lengths"][unique_idx].min(),
+        "episode/tool_call_count/mean":
+            batch.non_tensor_batch["tool_callings"][unique_idx].mean(),
         # "episode/tool_call_count/max":
         #     batch.non_tensor_batch["tool_callings"][unique_idx].max().item(),
         # "episode/tool_call_count/min":
