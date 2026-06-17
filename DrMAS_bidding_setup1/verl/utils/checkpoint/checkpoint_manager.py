@@ -24,8 +24,12 @@ from filelock import FileLock
 from transformers import PreTrainedTokenizer
 try:
     from transformers import ProcessorMixin
-except ImportError:
-    from transformers.processing_utils import ProcessorMixin
+except Exception:
+    try:
+        from transformers.processing_utils import ProcessorMixin
+    except Exception:
+        class ProcessorMixin:
+            pass
 
 from verl.utils.device import is_cuda_available, is_npu_available
 

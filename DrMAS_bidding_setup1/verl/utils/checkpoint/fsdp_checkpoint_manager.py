@@ -24,8 +24,12 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from transformers import GenerationConfig, PreTrainedTokenizer
 try:
     from transformers import ProcessorMixin
-except ImportError:
-    from transformers.processing_utils import ProcessorMixin
+except Exception:
+    try:
+        from transformers.processing_utils import ProcessorMixin
+    except Exception:
+        class ProcessorMixin:
+            pass
 
 from verl.utils.device import is_cuda_available
 from verl.utils.fs import copy_to_local, is_non_local

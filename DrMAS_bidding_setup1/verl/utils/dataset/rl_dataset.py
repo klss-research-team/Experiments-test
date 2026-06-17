@@ -29,8 +29,12 @@ from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 try:
     from transformers import ProcessorMixin
-except ImportError:
-    from transformers.processing_utils import ProcessorMixin
+except Exception:
+    try:
+        from transformers.processing_utils import ProcessorMixin
+    except Exception:
+        class ProcessorMixin:
+            pass
 
 import verl.utils.torch_functional as verl_F
 from verl.utils.model import compute_position_id_with_mask
