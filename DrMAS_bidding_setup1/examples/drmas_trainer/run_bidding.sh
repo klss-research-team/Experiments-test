@@ -138,8 +138,8 @@ if [ "$MODE" == "colab" ]; then
     free_cache_engine=True        # release KV cache after rollout → ~30GB free during training
     enforce_eager=True            # required when free_cache_engine=True (CUDA graphs incompatible)
     max_model_len=5120
-    save_freq=1
-    checkpoint_dir=/content/drive/MyDrive/DrMAS/checkpoints
+    save_freq=5
+    checkpoint_dir=/content/checkpoints
 fi
 
 ###################### Experiment Naming ##################################
