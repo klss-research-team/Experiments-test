@@ -114,6 +114,7 @@ gpu_memory_utilization=0.5   # fraction of GPU VRAM reserved for sglang KV cache
 max_model_len=null            # null = use model default (40960); override in colab to cap KV cache
 free_cache_engine=False       # if True, sglang frees KV cache after rollout (saves memory during training)
 enforce_eager=False           # if True, disables CUDA graphs (required when free_cache_engine=True)
+use_remove_padding=True       # set to False when flash_attn is unavailable
 
 ###################### Checkpointing #######################################
 save_freq=100                          # save every N steps (AWS default)
@@ -140,6 +141,7 @@ if [ "$MODE" == "colab" ]; then
     max_model_len=5120
     save_freq=5
     checkpoint_dir=/content/checkpoints
+    use_remove_padding=False      # flash_attn unavailable on Colab CUDA 12.4
 fi
 
 ###################### Experiment Naming ##################################
@@ -186,7 +188,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.path=null \
     actor_rollout_ref.actor.optim.lr=null \
     +agent.agent_specific_parameters.actor.optim.lr=$actor_optim_lr \
-    actor_rollout_ref.model.use_remove_padding=True \
+    actor_rollout_ref.model.use_remove_padding=$use_remove_padding \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=1 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=null \
