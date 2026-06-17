@@ -21,7 +21,11 @@ import torch.distributed
 from accelerate import init_empty_weights
 from torch.distributed.fsdp import FullStateDictConfig, ShardedOptimStateDictConfig, ShardedStateDictConfig, StateDictType
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from transformers import GenerationConfig, PreTrainedTokenizer, ProcessorMixin
+from transformers import GenerationConfig, PreTrainedTokenizer
+try:
+    from transformers import ProcessorMixin
+except ImportError:
+    from transformers.processing_utils import ProcessorMixin
 
 from verl.utils.device import is_cuda_available
 from verl.utils.fs import copy_to_local, is_non_local

@@ -21,7 +21,11 @@ import numpy as np
 import torch
 import torch.distributed
 from filelock import FileLock
-from transformers import PreTrainedTokenizer, ProcessorMixin
+from transformers import PreTrainedTokenizer
+try:
+    from transformers import ProcessorMixin
+except ImportError:
+    from transformers.processing_utils import ProcessorMixin
 
 from verl.utils.device import is_cuda_available, is_npu_available
 

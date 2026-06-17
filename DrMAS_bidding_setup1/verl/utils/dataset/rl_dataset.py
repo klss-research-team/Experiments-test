@@ -26,7 +26,11 @@ import numpy as np
 import torch
 from omegaconf import DictConfig, ListConfig
 from torch.utils.data import Dataset
-from transformers import PreTrainedTokenizer, ProcessorMixin
+from transformers import PreTrainedTokenizer
+try:
+    from transformers import ProcessorMixin
+except ImportError:
+    from transformers.processing_utils import ProcessorMixin
 
 import verl.utils.torch_functional as verl_F
 from verl.utils.model import compute_position_id_with_mask
