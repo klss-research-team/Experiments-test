@@ -186,7 +186,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.path=null \
     actor_rollout_ref.actor.optim.lr=null \
     +agent.agent_specific_parameters.actor.optim.lr=$actor_optim_lr \
-    actor_rollout_ref.model.use_remove_padding=False \
+    actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=1 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=null \
