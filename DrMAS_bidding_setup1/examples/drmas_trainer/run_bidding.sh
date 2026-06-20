@@ -130,17 +130,15 @@ lora_alpha=0                   # ignored when lora_rank=0; convention: 2×lora_r
 lora_target_modules='["q_proj","k_proj","v_proj","o_proj"]'
 
 ###################### Colab Single-GPU Overrides ##########################
-# Qwen3-4B with LoRA rank=16: base weights ~8GB × 3 = 24GB on A100 40GB.
-# gpu_memory_utilization=0.10 → 3 sglang instances × 4GB = 12GB for KV cache,
-# leaving ~4GB headroom. LoRA (rank=16) trains only ~0.6% of parameters.
-# Enable High-RAM in Colab (Runtime → Change runtime type) for param_offload
-# to have plenty of CPU RAM (~52GB vs default ~12GB).
+# Qwen3-4B with LoRA rank=16 on A100 80GB (167GB system RAM).
+# gpu_memory_utilization=0.20 → 3 sglang instances × 16GB = 48GB (model+KV),
+# leaving ~32GB free during training. LoRA (rank=16) trains ~0.6% of parameters.
 if [ "$MODE" == "colab" ]; then
     n_gpus_per_node=1
     actor_ppo_micro_batch_size_per_gpu='[1,1,1]'
     model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
     param_offload=True
-    gpu_memory_utilization=0.10  # 3×4GB=12GB for sglang KV cache; 24GB for 3×4B weights
+    gpu_memory_utilization=0.20  # 3×16GB=48GB for sglang (model+KV); 32GB free for training
     free_cache_engine=True        # release KV cache after rollout → more headroom during training
     enforce_eager=True            # required when free_cache_engine=True
     max_model_len=5120
