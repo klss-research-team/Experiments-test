@@ -94,7 +94,25 @@ class FSDPSGLangShardingManager(BaseShardingManager):
         log_gpu_memory_usage("Before state_dict() in sharding manager memory", logger=logger)
         if self.offload_param:
             load_fsdp_model_to_gpu(self.module)
+
+        # LoRA: merge adapters into base weights so sglang sees a standard model
+        inner = getattr(self.module, '_fsdp_wrapped_module', self.module)
+        is_peft = hasattr(inner, 'peft_config')
+        if is_peft:
+            inner.merge_adapter()
+
         params = self.module.state_dict()
+
+        if is_peft:
+            inner.unmerge_adapter()
+            # Strip PEFT "base_model.model." prefix; drop LoRA-specific keys
+            clean = {}
+            for k, v in params.items():
+                if any(tag in k for tag in ('lora_A', 'lora_B', 'lora_embedding', 'lora_magnitude')):
+                    continue
+                clean[k.removeprefix('base_model.model.')] = v
+            params = clean
+
         log_gpu_memory_usage("After state_dict() in sharding manager memory", logger=logger)
         device = torch.cuda.current_device()  # used when fsdp2 set cpu_offload_policy
         params = {k: v.to(device, non_blocking=True) if fsdp_version(self.module) == 2 else v for k, v in params.items()}

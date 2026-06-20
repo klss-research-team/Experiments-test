@@ -124,26 +124,32 @@ checkpoint_dir=checkpoints/DrMAS_bidding  # local path for AWS
 ###################### Training Penalties ##################################
 invalid_action_penalty_coef=0.1
 
+###################### LoRA ################################################
+lora_rank=0                    # 0 = full fine-tuning; >0 enables LoRA
+lora_alpha=0                   # ignored when lora_rank=0; convention: 2×lora_rank
+lora_target_modules='["q_proj","k_proj","v_proj","o_proj"]'
+
 ###################### Colab Single-GPU Overrides ##########################
-# Uses Qwen3-0.6B (1.2GB each × 3 = ~3.6GB weights) to fit three separate agent
-# models on a single 40GB A100 with headroom to spare during initialization.
-# gpu_memory_utilization=0.20 → 3 sglang instances × 8GB = 24GB, ~10GB headroom.
-# max_model_len=5120 caps the KV cache at 4096+512 tokens (vs model default of 32768).
-# Enable High-RAM in Colab (Runtime → Change runtime type) to give param_offload
-# plenty of CPU RAM (~52GB vs default ~12GB).
+# Qwen3-4B with LoRA rank=16: base weights ~8GB × 3 = 24GB on A100 40GB.
+# gpu_memory_utilization=0.10 → 3 sglang instances × 4GB = 12GB for KV cache,
+# leaving ~4GB headroom. LoRA (rank=16) trains only ~0.6% of parameters.
+# Enable High-RAM in Colab (Runtime → Change runtime type) for param_offload
+# to have plenty of CPU RAM (~52GB vs default ~12GB).
 if [ "$MODE" == "colab" ]; then
     n_gpus_per_node=1
     actor_ppo_micro_batch_size_per_gpu='[1,1,1]'
-    model_ids='["Qwen/Qwen3-0.6B","Qwen/Qwen3-0.6B","Qwen/Qwen3-0.6B"]'
+    model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
     param_offload=True
-    gpu_memory_utilization=0.20  # 3×8GB=24GB for sglang, ~16GB free during rollout
-    free_cache_engine=True        # release KV cache after rollout → ~30GB free during training
-    enforce_eager=True            # required when free_cache_engine=True (CUDA graphs incompatible)
+    gpu_memory_utilization=0.10  # 3×4GB=12GB for sglang KV cache; 24GB for 3×4B weights
+    free_cache_engine=True        # release KV cache after rollout → more headroom during training
+    enforce_eager=True            # required when free_cache_engine=True
     max_model_len=5120
     save_freq=5
     checkpoint_dir=/content/checkpoints
     use_remove_padding=False      # flash_attn unavailable on Colab CUDA 12.4
     attn_implementation=sdpa      # use PyTorch native SDPA instead of flash_attention_2
+    lora_rank=16
+    lora_alpha=32
 fi
 
 ###################### Experiment Naming ##################################
@@ -169,12 +175,19 @@ echo "  gpu_mem_util     : $gpu_memory_utilization"
 echo "  max_model_len    : $max_model_len"
 echo "  save_freq        : $save_freq"
 echo "  checkpoint_dir   : $checkpoint_dir"
+echo "  lora_rank        : $lora_rank"
 echo "  judge model      : ${JUDGE_MODEL:-NOT SET}"
 echo "  judge base url   : ${JUDGE_BASE_URL:-NOT SET}"
 echo "========================="
 echo ""
 
 ###################### Launch #############################################
+# Build optional LoRA args (only injected when lora_rank > 0)
+lora_args=""
+if [ "$lora_rank" -gt 0 ]; then
+    lora_args="+actor_rollout_ref.model.lora_rank=$lora_rank +actor_rollout_ref.model.lora_alpha=$lora_alpha +actor_rollout_ref.model.target_modules=$lora_target_modules"
+fi
+
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=$algorithm \
     algorithm.group_by_agent_id=$group_by_agent_id \
@@ -192,6 +205,7 @@ python3 -m verl.trainer.main_ppo \
     +agent.agent_specific_parameters.actor.optim.lr=$actor_optim_lr \
     actor_rollout_ref.model.use_remove_padding=$use_remove_padding \
     +actor_rollout_ref.model.attn_implementation=$attn_implementation \
+    $lora_args \
     actor_rollout_ref.actor.use_adaptive_ppo_mini_batch_size=True \
     actor_rollout_ref.actor.ppo_mini_update_num=1 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=null \
