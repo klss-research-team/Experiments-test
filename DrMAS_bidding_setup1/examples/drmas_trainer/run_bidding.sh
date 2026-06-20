@@ -129,8 +129,6 @@ lora_rank=0                    # 0 = full fine-tuning; >0 enables LoRA
 lora_alpha=0                   # ignored when lora_rank=0; convention: 2×lora_rank
 lora_target_modules='["q_proj","k_proj","v_proj","o_proj"]'
 
-###################### Ray Init ############################################
-ray_num_gpus=""               # empty = let Ray auto-detect; set to integer to force
 
 ###################### Colab Single-GPU Overrides ##########################
 # Qwen3-4B with LoRA rank=16 on A100 80GB (167GB system RAM).
@@ -151,7 +149,7 @@ if [ "$MODE" == "colab" ]; then
     attn_implementation=sdpa      # use PyTorch native SDPA instead of flash_attention_2
     lora_rank=16
     lora_alpha=32
-    ray_num_gpus=1              # explicitly tell Ray this session has 1 GPU
+    export CUDA_VISIBLE_DEVICES=0  # fresh Colab sessions may not set this; Ray needs it to detect the GPU
 fi
 
 ###################### Experiment Naming ##################################
@@ -190,14 +188,7 @@ if [ "$lora_rank" -gt 0 ]; then
     lora_args="actor_rollout_ref.model.lora_rank=$lora_rank actor_rollout_ref.model.lora_alpha=$lora_alpha actor_rollout_ref.model.target_modules=$lora_target_modules"
 fi
 
-# Build optional Ray GPU arg (only injected when ray_num_gpus is set)
-ray_args=""
-if [ -n "$ray_num_gpus" ]; then
-    ray_args="+ray_init.num_gpus=$ray_num_gpus"
-fi
-
 python3 -m verl.trainer.main_ppo \
-    $ray_args \
     algorithm.adv_estimator=$algorithm \
     algorithm.group_by_agent_id=$group_by_agent_id \
     data.train_files=$TRAIN_DATA \
