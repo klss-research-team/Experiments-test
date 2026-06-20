@@ -81,7 +81,7 @@ group_by_agent_id=True # Dr.MAS: compute advantages separately per agent
 # All start from the same base model — cheapest starting point.
 # Swap individual entries to use different models per agent.
 agent_ids='["BidderA","BidderB","Detector"]'
-model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
+model_ids='["Qwen/Qwen3-1.5B","Qwen/Qwen3-1.5B","Qwen/Qwen3-1.5B"]'
 model_sharing=False
 orchestra_type=bidding
 
@@ -131,15 +131,15 @@ lora_target_modules='["q_proj","k_proj","v_proj","o_proj"]'
 
 
 ###################### Colab Single-GPU Overrides ##########################
-# Qwen3-4B with LoRA rank=16 on A100 80GB (167GB system RAM).
-# gpu_memory_utilization=0.20 → 3 sglang instances × 16GB = 48GB (model+KV),
-# leaving ~32GB free during training. LoRA (rank=16) trains ~0.6% of parameters.
+# Qwen3-1.5B with LoRA rank=16 on A100 80GB (167GB system RAM).
+# Each model is ~3GB (bf16); 3 FSDP + 3 sglang = ~18GB weights total,
+# leaving ~62GB free for KV cache and training. LoRA (rank=16) trains ~1% of parameters.
 if [ "$MODE" == "colab" ]; then
     n_gpus_per_node=1
     actor_ppo_micro_batch_size_per_gpu='[1,1,1]'
-    model_ids='["Qwen/Qwen3-4B","Qwen/Qwen3-4B","Qwen/Qwen3-4B"]'
+    model_ids='["Qwen/Qwen3-1.5B","Qwen/Qwen3-1.5B","Qwen/Qwen3-1.5B"]'
     param_offload=True
-    gpu_memory_utilization=0.20  # 3×16GB=48GB for sglang (model+KV); 32GB free for training
+    gpu_memory_utilization=0.20  # 3×~5GB per sglang instance; plenty of headroom on 80GB
     free_cache_engine=True        # release KV cache after rollout → more headroom during training
     enforce_eager=True            # required when free_cache_engine=True
     max_model_len=5120
