@@ -129,7 +129,7 @@ class Tracking:
             if backend is None or default_backend in backend:
                 logger_instance.log(data=data, step=step)
 
-    def __del__(self):
+    def finish(self):
         if "wandb" in self.logger:
             self.logger["wandb"].finish(exit_code=0)
         if "swanlab" in self.logger:
@@ -138,9 +138,14 @@ class Tracking:
             self.logger["vemlp_wandb"].finish(exit_code=0)
         if "tensorboard" in self.logger:
             self.logger["tensorboard"].finish()
-
         if "clearnml" in self.logger:
             self.logger["clearnml"].finish()
+
+    def __del__(self):
+        try:
+            self.finish()
+        except Exception:
+            pass
 
 
 class ClearMLLogger:

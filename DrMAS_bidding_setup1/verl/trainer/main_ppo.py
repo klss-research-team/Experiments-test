@@ -191,7 +191,12 @@ class TaskRunner:
             val_envs=val_envs,
         )
         trainer.init_workers()
-        trainer.fit()
+        try:
+            trainer.fit()
+        finally:
+            import wandb
+            if wandb.run is not None:
+                wandb.finish()
 
 
 def create_rl_dataset(data_paths, data_config, tokenizer, processor):
