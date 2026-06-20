@@ -1,24 +1,23 @@
 # ============================================================
-# Connect VS Code to this Colab A100 via SSH + cloudflared tunnel
+# Connect VS Code to this Colab A100 via SSH + bore TCP tunnel
 #
 # HOW TO USE:
 #   1. Run this cell in Colab (Runtime → A100 GPU)
-#   2. Copy the SSH config block it prints
-#   3. Paste into C:\Users\HP\.ssh\config on your local machine
-#   4. In VS Code: Ctrl+Shift+P → "Remote-SSH: Connect to Host" → "colab-a100"
-#   5. Password is printed below
+#   2. It prints an SSH config block — paste into C:\Users\HP\.ssh\config
+#   3. In VS Code: Ctrl+Shift+P → "Remote-SSH: Connect to Host" → colab-a100
+#   4. Password is printed below
 # ============================================================
 
-import subprocess, threading, time, re, os
+import subprocess, time, re, os
 
-# ── 1. Install cloudflared ──────────────────────────────────
-print("📦 Installing cloudflared...")
+# ── 1. Install bore (raw TCP tunnel — no websocket issues) ──
+print("📦 Installing bore tunnel...")
 subprocess.run([
-    "wget", "-q", "-O", "/usr/local/bin/cloudflared",
-    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+    "bash", "-c",
+    "curl -fsSL https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz "
+    "| tar xz -C /usr/local/bin/"
 ], check=True)
-subprocess.run(["chmod", "+x", "/usr/local/bin/cloudflared"], check=True)
-print("   ✅ cloudflared ready")
+print("   ✅ bore ready")
 
 # ── 2. Set up SSH server ────────────────────────────────────
 print("🔧 Setting up SSH server...")
@@ -48,40 +47,36 @@ else:
     ], check=True)
 print("   ✅ Code up to date")
 
-# ── 4. Start cloudflared tunnel ─────────────────────────────
-print("🌐 Starting cloudflared tunnel (this takes ~10s)...")
+# ── 4. Start bore tunnel (raw TCP on bore.pub) ──────────────
+print("🌐 Starting bore tunnel...")
 tunnel = subprocess.Popen(
-    ["cloudflared", "tunnel", "--url", "ssh://localhost:22"],
-    stderr=subprocess.PIPE,
-    stdout=subprocess.PIPE,
-    text=True,
+    ["bore", "local", "22", "--to", "bore.pub"],
+    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
 )
 
-url = None
+port = None
 for _ in range(40):
-    line = tunnel.stderr.readline()
-    match = re.search(r'https://[a-z0-9-]+\.trycloudflare\.com', line)
+    line = tunnel.stdout.readline()
+    match = re.search(r'listening at bore\.pub:(\d+)', line)
     if match:
-        url = match.group(0)
+        port = match.group(1)
         break
 
-if not url:
-    raise RuntimeError("❌ Could not get tunnel URL. Re-run the cell.")
-
-hostname = url.replace("https://", "")
+if not port:
+    raise RuntimeError("❌ Could not get bore port. Re-run the cell.")
 
 # ── 5. Print instructions ───────────────────────────────────
 print(f"""
 {'='*62}
 ✅  Tunnel is live!
 
-Add this block to  C:\\Users\\HP\\.ssh\\config  on your Windows machine:
+Paste this into  C:\\Users\\HP\\.ssh\\config  on your Windows machine
+(replace any previous colab-a100 block):
 
 Host colab-a100
-    HostName {hostname}
+    HostName bore.pub
     User root
-    Port 22
-    ProxyCommand cloudflared access ssh --hostname %h
+    Port {port}
 
 Then in VS Code:
   Ctrl+Shift+P → "Remote-SSH: Connect to Host" → colab-a100
