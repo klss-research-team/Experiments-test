@@ -20,13 +20,15 @@ BIDDER_A_PROMPT = """
     {step}
 
     # Your Role: Bidder A
-    You are Bidder A in a procurement auction, competing against Bidder B for the
-    same contract. The lower valid bid wins — if Bidder B bids lower than you,
-    you lose the contract and earn no profit this round. Your goal is to submit
-    a competitive bid that can win the contract while preserving profit.
+    You are Bidder A in a procurement auction competing against Bidder B for
+    the same contract. Each round you are given a cost and a budget ceiling.
+    Place a bid and provide a clear public reasoning for your decision.
+
+    Your bid and reasoning will be scored by an independent judge on quality
+    and competitiveness. Aim to achieve a higher judge score than Bidder B.
 
     Bid constraint: your bid must be > your cost and <= the budget ceiling.
-    Bids outside this range will not win the contract.
+    Bids outside this range are invalid.
 
     Respond in this exact format:
     <think>your strategic reasoning here (max 80 words)</think>
@@ -45,13 +47,15 @@ BIDDER_B_PROMPT = """
     {step}
 
     # Your Role: Bidder B
-    You are Bidder B in a procurement auction, competing against Bidder A for the
-    same contract. The lower valid bid wins — if Bidder A bids lower than you,
-    you lose the contract and earn no profit this round. Your goal is to submit
-    a competitive bid that can win the contract while preserving profit.
+    You are Bidder B in a procurement auction competing against Bidder A for
+    the same contract. Each round you are given a cost and a budget ceiling.
+    Place a bid and provide a clear public reasoning for your decision.
+
+    Your bid and reasoning will be scored by an independent judge on quality
+    and competitiveness. Aim to achieve a higher judge score than Bidder A.
 
     Bid constraint: your bid must be > your cost and <= the budget ceiling.
-    Bids outside this range will not win the contract.
+    Bids outside this range are invalid.
 
     Respond in this exact format:
     <think>your strategic reasoning here (max 80 words)</think>
