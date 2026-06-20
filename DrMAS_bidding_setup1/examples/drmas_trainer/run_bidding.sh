@@ -185,7 +185,7 @@ echo ""
 # Build optional LoRA args (only injected when lora_rank > 0)
 lora_args=""
 if [ "$lora_rank" -gt 0 ]; then
-    lora_args="+actor_rollout_ref.model.lora_rank=$lora_rank +actor_rollout_ref.model.lora_alpha=$lora_alpha +actor_rollout_ref.model.target_modules=$lora_target_modules"
+    lora_args="actor_rollout_ref.model.lora_rank=$lora_rank actor_rollout_ref.model.lora_alpha=$lora_alpha actor_rollout_ref.model.target_modules=$lora_target_modules"
 fi
 
 python3 -m verl.trainer.main_ppo \
