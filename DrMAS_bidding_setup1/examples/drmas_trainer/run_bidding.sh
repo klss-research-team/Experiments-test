@@ -143,7 +143,7 @@ if [ "$MODE" == "colab" ]; then
     gpu_memory_utilization=0.20  # 3×~5GB per sglang instance; plenty of headroom on 80GB
     free_cache_engine=True        # release KV cache after rollout → more headroom during training
     enforce_eager=True            # required when free_cache_engine=True
-    max_model_len=3072
+    max_model_len=4608  # minimum valid: must be >= max_prompt_length(4096) + max_response_length(512)
     save_freq=5
     checkpoint_dir=/content/checkpoints
     use_remove_padding=False      # flash_attn unavailable on Colab CUDA 12.4
