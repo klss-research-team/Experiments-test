@@ -112,6 +112,7 @@ n_gpus_per_node=4   # override to 1 automatically in colab mode below
 param_offload=False          # offload model weights to CPU RAM (slower, saves GPU VRAM)
 gpu_memory_utilization=0.5   # fraction of GPU VRAM reserved for sglang KV cache
 max_model_len=null            # null = use model default (40960); override in colab to cap KV cache
+log_prob_micro_batch_size_per_gpu=8
 free_cache_engine=False       # if True, sglang frees KV cache after rollout (saves memory during training)
 enforce_eager=False           # if True, disables CUDA graphs (required when free_cache_engine=True)
 use_remove_padding=True       # set to False when flash_attn is unavailable
@@ -142,13 +143,14 @@ if [ "$MODE" == "colab" ]; then
     gpu_memory_utilization=0.20  # 3×~5GB per sglang instance; plenty of headroom on 80GB
     free_cache_engine=True        # release KV cache after rollout → more headroom during training
     enforce_eager=True            # required when free_cache_engine=True
-    max_model_len=5120
+    max_model_len=3072
     save_freq=5
     checkpoint_dir=/content/checkpoints
     use_remove_padding=False      # flash_attn unavailable on Colab CUDA 12.4
     attn_implementation=sdpa      # use PyTorch native SDPA instead of flash_attention_2
     lora_rank=16
     lora_alpha=32
+    log_prob_micro_batch_size_per_gpu=4  # halve forward-pass batch to save activation memory
     export CUDA_VISIBLE_DEVICES=0  # fresh Colab sessions may not set this; Ray needs it to detect the GPU
 fi
 
@@ -215,7 +217,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=$param_offload \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=8 \
+    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.name=sglang \
     actor_rollout_ref.rollout.gpu_memory_utilization=$gpu_memory_utilization \
