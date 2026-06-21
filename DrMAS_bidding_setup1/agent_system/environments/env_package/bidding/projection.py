@@ -45,6 +45,18 @@ def _parse_float(value: str):
         return None
 
 
+def _extract_bid_fallback(text: str):
+    """
+    Fallback for models that ignore XML tags and use markdown bold format.
+    Handles: **Bid:** $447  |  **Bid**: 701.50  |  **Bid:** 385.49
+    Returns the parsed float, or None if not found.
+    """
+    match = re.search(r'\*\*Bid\b[*:\s]+\$?\s*([\d,]+\.?\d*)', text, re.IGNORECASE)
+    if match:
+        return _parse_float(match.group(1))
+    return None
+
+
 def bidding_projection(
     actions: List[str],
     check_think_tag: bool = False,
@@ -77,6 +89,8 @@ def bidding_projection(
         reasoning = _extract_tag(original_str, "reasoning")
 
         bid = _parse_float(bid_text)
+        if bid is None:
+            bid = _extract_bid_fallback(original_str)
 
         if bid is None:
             is_valid = False
