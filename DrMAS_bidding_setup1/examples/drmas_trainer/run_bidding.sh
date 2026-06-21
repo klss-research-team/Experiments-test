@@ -81,7 +81,7 @@ group_by_agent_id=True # Dr.MAS: compute advantages separately per agent
 # All start from the same base model — cheapest starting point.
 # Swap individual entries to use different models per agent.
 agent_ids='["BidderA","BidderB","Detector"]'
-model_ids='["Qwen/Qwen3-1.5B","Qwen/Qwen3-1.5B","Qwen/Qwen3-1.5B"]'
+model_ids='["Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct"]'
 model_sharing=False
 orchestra_type=bidding
 
@@ -137,7 +137,7 @@ lora_target_modules='["q_proj","k_proj","v_proj","o_proj"]'
 if [ "$MODE" == "colab" ]; then
     n_gpus_per_node=1
     actor_ppo_micro_batch_size_per_gpu='[1,1,1]'
-    model_ids='["Qwen/Qwen3-1.5B","Qwen/Qwen3-1.5B","Qwen/Qwen3-1.5B"]'
+    model_ids='["Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct","Qwen/Qwen2.5-1.5B-Instruct"]'
     param_offload=True
     gpu_memory_utilization=0.20  # 3×~5GB per sglang instance; plenty of headroom on 80GB
     free_cache_engine=True        # release KV cache after rollout → more headroom during training
