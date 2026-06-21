@@ -95,16 +95,21 @@ class FSDPSGLangShardingManager(BaseShardingManager):
         if self.offload_param:
             load_fsdp_model_to_gpu(self.module)
 
-        # LoRA: merge adapters into base weights so sglang sees a standard model
+        # LoRA: merge adapters into base weights so sglang sees a standard model.
+        # torch.no_grad() is required: after a training step the optimizer modifies
+        # LoRA weights in-place, leaving stale autograd views; merge_adapter() calls
+        # weight_B @ weight_A which PyTorch refuses on in-place-modified view bases.
         inner = getattr(self.module, '_fsdp_wrapped_module', self.module)
         is_peft = hasattr(inner, 'peft_config')
-        if is_peft:
-            inner.merge_adapter()
+        with torch.no_grad():
+            if is_peft:
+                inner.merge_adapter()
 
         params = self.module.state_dict()
 
-        if is_peft:
-            inner.unmerge_adapter()
+        with torch.no_grad():
+            if is_peft:
+                inner.unmerge_adapter()
             # Strip PEFT prefixes and drop LoRA-specific keys so sglang sees a plain model state dict.
             # PEFT wraps each LoRA target as:  base_model.model.<path>.base_layer.<param>
             # sglang expects the vanilla key:  <path>.<param>
