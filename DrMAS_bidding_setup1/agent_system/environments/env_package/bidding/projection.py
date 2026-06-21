@@ -15,11 +15,12 @@ def _extract_tag(text: str, tag: str) -> str:
 def _extract_bold_field(text: str, field: str) -> str:
     """
     Extract content after a **Field:** markdown bold header (primary format).
-    Handles both **Field:** and **Field**: variants.
+    Uses [*:\s]+ after the field name to consume any mix of *, :, and spaces,
+    which handles both **Field:** (colon inside bold) and **Field**: variants.
     Captures until the next **Bold:** section, ### header, or end of string.
     """
     escaped = re.escape(field)
-    pattern = rf'\*\*{escaped}\*?\*?:?\s*(.*?)(?=\n\s*\*\*[A-Za-z]|\n\s*###|\Z)'
+    pattern = rf'\*\*{escaped}[*:\s]+(.*?)(?=\n\s*\*\*[A-Za-z]|\n\s*###|\Z)'
     match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
     return match.group(1).strip() if match else ""
 
