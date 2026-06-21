@@ -32,7 +32,7 @@ elif [ "$MODE" == "colab" ]; then
     VAL_ONLY=False
     TRAIN_DATA="$HOME/data/drmas_bidding/train.parquet"
     VAL_DATA="$HOME/data/drmas_bidding/test.parquet"
-    train_data_size=32
+    train_data_size=16   # reduced from 32: 16×4 rollouts=64 seqs/instance → ~8GB KV vs ~17GB at 32
     val_data_size=32
     val_group_size=1
     total_epochs=1
@@ -109,7 +109,8 @@ max_response_length=512
 
 ###################### Hardware ############################################
 n_gpus_per_node=4   # override to 1 automatically in colab mode below
-param_offload=False          # offload model weights to CPU RAM (slower, saves GPU VRAM)
+param_offload=False          # offload actor model weights to CPU RAM (slower, saves GPU VRAM)
+ref_param_offload=False      # offload ref model weights to CPU RAM (saves GPU VRAM, no quality impact)
 gpu_memory_utilization=0.5   # fraction of GPU VRAM reserved for sglang KV cache
 max_model_len=null            # null = use model default (40960); override in colab to cap KV cache
 log_prob_micro_batch_size_per_gpu=8
@@ -151,6 +152,7 @@ if [ "$MODE" == "colab" ]; then
     lora_rank=16
     lora_alpha=32
     log_prob_micro_batch_size_per_gpu=4  # halve forward-pass batch to save activation memory
+    ref_param_offload=True               # offload frozen ref model weights to CPU → saves 3×3GB=9GB GPU
     export CUDA_VISIBLE_DEVICES=0  # fresh Colab sessions may not set this; Ray needs it to detect the GPU
 fi
 
@@ -216,6 +218,7 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.entropy_coeff=0.001 \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
     actor_rollout_ref.actor.fsdp_config.param_offload=$param_offload \
+    actor_rollout_ref.ref.fsdp_config.param_offload=$ref_param_offload \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=True \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$log_prob_micro_batch_size_per_gpu \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
