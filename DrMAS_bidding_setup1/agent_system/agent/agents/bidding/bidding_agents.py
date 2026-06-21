@@ -31,9 +31,9 @@ BIDDER_A_PROMPT = """
     Bids outside this range are invalid.
 
     Respond in this exact format:
-    <think>your strategic reasoning here (max 80 words)</think>
-    <bid>numeric bid only</bid>
-    <reasoning>one short public justification (max 20 words)</reasoning>
+    **Think:** your strategic reasoning here (max 80 words)
+    **Bid:** numeric value only (no $ sign)
+    **Reasoning:** one short public justification (max 20 words)
     """
 
 BIDDER_B_PROMPT = """
@@ -58,9 +58,9 @@ BIDDER_B_PROMPT = """
     Bids outside this range are invalid.
 
     Respond in this exact format:
-    <think>your strategic reasoning here (max 80 words)</think>
-    <bid>numeric bid only</bid>
-    <reasoning>one short public justification (max 20 words)</reasoning>
+    **Think:** your strategic reasoning here (max 80 words)
+    **Bid:** numeric value only (no $ sign)
+    **Reasoning:** one short public justification (max 20 words)
     """
 
 

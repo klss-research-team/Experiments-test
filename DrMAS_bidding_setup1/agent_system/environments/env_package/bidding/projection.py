@@ -5,56 +5,42 @@ import numpy as np
 from typing import List, Tuple, Dict, Any
 
 
-def _has_valid_think(text: str) -> bool:
-    """Check for exactly one valid <think>...</think> block."""
-    think_start_count = text.count("<think>")
-    think_end_count = text.count("</think>")
-    think_start_idx = text.find("<think>")
-    think_end_idx = text.find("</think>")
-
-    return (
-        think_start_count == 1
-        and think_end_count == 1
-        and think_start_idx != -1
-        and think_end_idx != -1
-        and think_end_idx > think_start_idx
-    )
-
-
 def _extract_tag(text: str, tag: str) -> str:
-    """Extract content from the first <tag>...</tag> block."""
+    """Extract content from the first <tag>...</tag> block (XML fallback)."""
     pattern = rf"<{tag}>\s*(.*?)\s*</{tag}>"
     match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+    return match.group(1).strip() if match else ""
 
-    if match is None:
-        return ""
 
-    return match.group(1).strip()
+def _extract_bold_field(text: str, field: str) -> str:
+    """
+    Extract content after a **Field:** markdown bold header (primary format).
+    Handles both **Field:** and **Field**: variants.
+    Captures until the next **Bold:** section, ### header, or end of string.
+    """
+    escaped = re.escape(field)
+    pattern = rf'\*\*{escaped}\*?\*?:?\s*(.*?)(?=\n\s*\*\*[A-Za-z]|\n\s*###|\Z)'
+    match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def _extract_section_header(text: str, field: str) -> str:
+    """Extract content after a ### Field: markdown section header (secondary fallback)."""
+    escaped = re.escape(field)
+    pattern = rf'###\s*{escaped}\s*:?\s*\n?\s*(.*?)(?=\n\s*###|\n\s*\*\*|\Z)'
+    match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+    return match.group(1).strip() if match else ""
 
 
 def _parse_float(value: str):
     """Parse a numeric string like '$1,200.50' into float."""
-    if value is None or value == "":
+    if not value:
         return None
-
     cleaned = value.strip().replace("$", "").replace(",", "")
-
     try:
         return float(cleaned)
     except ValueError:
         return None
-
-
-def _extract_bid_fallback(text: str):
-    """
-    Fallback for models that ignore XML tags and use markdown bold format.
-    Handles: **Bid:** $447  |  **Bid**: 701.50  |  **Bid:** 385.49
-    Returns the parsed float, or None if not found.
-    """
-    match = re.search(r'\*\*Bid\b[*:\s]+\$?\s*([\d,]+\.?\d*)', text, re.IGNORECASE)
-    if match:
-        return _parse_float(match.group(1))
-    return None
 
 
 def bidding_projection(
@@ -64,10 +50,12 @@ def bidding_projection(
     """
     Project bidder LLM responses into structured bidding actions.
 
-    Expected format:
-    <think>...</think>
-    <bid>numeric bid</bid>
-    <reasoning>public reasoning</reasoning>
+    Primary format (markdown bold, matches 1.5B model output):
+    **Think:** strategic reasoning (max 80 words)
+    **Bid:** numeric value only
+    **Reasoning:** one short public justification (max 20 words)
+
+    XML tags are accepted as a fallback for larger models.
 
     Returns
     -------
@@ -82,19 +70,14 @@ def bidding_projection(
     for original_str in actions:
         is_valid = True
 
-        if check_think_tag and not _has_valid_think(original_str):
-            is_valid = False
-
-        bid_text = _extract_tag(original_str, "bid")
-        reasoning = _extract_tag(original_str, "reasoning")
-
+        # Bid: try markdown bold first, then XML tag
+        bid_text = _extract_bold_field(original_str, "Bid") or _extract_tag(original_str, "bid")
         bid = _parse_float(bid_text)
-        if bid is None:
-            bid = _extract_bid_fallback(original_str)
 
-        if bid is None:
-            is_valid = False
-        elif bid <= 0:
+        # Reasoning: try markdown bold first, then XML tag
+        reasoning = _extract_bold_field(original_str, "Reasoning") or _extract_tag(original_str, "reasoning")
+
+        if bid is None or bid <= 0:
             is_valid = False
             bid = None
 
@@ -116,10 +99,12 @@ def detector_projection(
     """
     Project detector LLM responses into structured detector outputs.
 
-    Expected format:
-    <think>...</think>
-    <collusion_score>0 to 1</collusion_score>
-    <explanation>short explanation</explanation>
+    Primary format (markdown bold, matches 1.5B model output):
+    **Think:** evidence-based analysis
+    **Collusion Score:** 0.0 to 1.0
+    **Explanation:** 1-2 sentence explanation
+
+    XML tags and ### section headers are accepted as fallbacks.
 
     Returns
     -------
@@ -134,11 +119,17 @@ def detector_projection(
     for original_str in actions:
         is_valid = True
 
-        if check_think_tag and not _has_valid_think(original_str):
-            is_valid = False
-
-        score_text = _extract_tag(original_str, "collusion_score")
-        explanation = _extract_tag(original_str, "explanation")
+        # Collusion score: markdown bold → ### section header → XML tag
+        score_text = (
+            _extract_bold_field(original_str, "Collusion Score")
+            or _extract_section_header(original_str, "Collusion Score")
+            or _extract_tag(original_str, "collusion_score")
+        )
+        explanation = (
+            _extract_bold_field(original_str, "Explanation")
+            or _extract_section_header(original_str, "Explanation")
+            or _extract_tag(original_str, "explanation")
+        )
 
         collusion_score = _parse_float(score_text)
 
@@ -146,7 +137,6 @@ def detector_projection(
             is_valid = False
             collusion_score = 0.0
         else:
-            # clamp to [0, 1]
             collusion_score = max(0.0, min(1.0, collusion_score))
 
         projected_actions.append({
