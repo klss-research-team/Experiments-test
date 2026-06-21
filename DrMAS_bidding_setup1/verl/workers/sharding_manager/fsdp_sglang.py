@@ -105,12 +105,16 @@ class FSDPSGLangShardingManager(BaseShardingManager):
 
         if is_peft:
             inner.unmerge_adapter()
-            # Strip PEFT "base_model.model." prefix; drop LoRA-specific keys
+            # Strip PEFT prefixes and drop LoRA-specific keys so sglang sees a plain model state dict.
+            # PEFT wraps each LoRA target as:  base_model.model.<path>.base_layer.<param>
+            # sglang expects the vanilla key:  <path>.<param>
             clean = {}
             for k, v in params.items():
                 if any(tag in k for tag in ('lora_A', 'lora_B', 'lora_embedding', 'lora_magnitude')):
                     continue
-                clean[k.removeprefix('base_model.model.')] = v
+                k = k.removeprefix('base_model.model.')  # remove outer PEFT wrapper
+                k = k.replace('.base_layer.', '.')        # qkv_proj.base_layer.weight → qkv_proj.weight
+                clean[k] = v
             params = clean
 
         log_gpu_memory_usage("After state_dict() in sharding manager memory", logger=logger)
