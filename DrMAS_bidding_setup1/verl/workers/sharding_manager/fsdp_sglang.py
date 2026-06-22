@@ -98,34 +98,60 @@ class FSDPSGLangShardingManager(BaseShardingManager):
         inner = getattr(self.module, '_fsdp_wrapped_module', self.module)
         is_peft = hasattr(inner, 'peft_config')
 
-        if is_peft:
-            # FSDP-safe LoRA merge pattern:
-            # summon_full_params temporarily materialises all parameters on GPU
-            # (including LoRA A/B) regardless of param_offload setting.
-            # writeback=True writes the merged values back into the flat param
-            # before re-sharding so that the following state_dict() sees merged weights.
-            # We then enter a second context to unmerge and restore the original state.
-            with FSDP.summon_full_params(self.module, writeback=True, with_grads=False):
-                with torch.no_grad():
-                    inner.merge_adapter()
-
+        # FSDP extracts tensors via state_dict() — its own clean API.
+        # For LoRA models the state dict contains both base weights and lora_A/B tensors.
         params = self.module.state_dict()
 
         if is_peft:
-            with FSDP.summon_full_params(self.module, writeback=True, with_grads=False):
-                with torch.no_grad():
-                    inner.unmerge_adapter()
+            # LoRA merge runs OUTSIDE FSDP on plain state-dict tensors.
+            # PEFT algebra (dense matmul) and FSDP (distributed parameter virtualisation)
+            # are different abstraction layers; mixing them (merge_adapter on FSDP views)
+            # causes allocation and autograd errors. Keeping them separate is the stable design.
 
-            # Strip PEFT prefixes and drop LoRA-specific keys so sglang sees a plain model state dict.
-            # PEFT wraps each LoRA target as:  base_model.model.<path>.base_layer.<param>
-            # sglang expects the vanilla key:  <path>.<param>
-            clean = {}
+            # Collect per-layer scaling factors — plain Python floats, not FSDP tensors.
+            scalings: dict = {}
+            fan_in_fan_out: dict = {}
+            for name, mod in inner.named_modules():
+                if hasattr(mod, 'lora_A') and hasattr(mod, 'scaling'):
+                    for adapter in mod.active_adapters:
+                        key = f'base_model.model.{name}'
+                        scalings[key] = mod.scaling.get(adapter, 1.0)
+                        fan_in_fan_out[key] = getattr(mod, 'fan_in_fan_out', False)
+
+            # Partition state dict: lora_A, lora_B, and everything else.
+            lora_A: dict = {}
+            lora_B: dict = {}
+            other: dict = {}
             for k, v in params.items():
-                if any(tag in k for tag in ('lora_A', 'lora_B', 'lora_embedding', 'lora_magnitude')):
-                    continue
-                k = k.removeprefix('base_model.model.')
-                k = k.replace('.base_layer.', '.')
-                clean[k] = v
+                if '.lora_A.' in k:
+                    lora_A[k[:k.index('.lora_A.')]] = v
+                elif '.lora_B.' in k:
+                    lora_B[k[:k.index('.lora_B.')]] = v
+                elif any(tag in k for tag in ('lora_embedding', 'lora_magnitude')):
+                    pass
+                else:
+                    other[k] = v
+
+            # Compute merged weights as pure arithmetic on state-dict copies.
+            # The FSDP model is never modified.
+            clean: dict = {}
+            with torch.no_grad():
+                for k, v in other.items():
+                    if '.base_layer.' in k:
+                        prefix = k[:k.index('.base_layer.')]
+                        ck = k.removeprefix('base_model.model.').replace('.base_layer.', '.')
+                        if prefix in lora_A and prefix in lora_B:
+                            scale = scalings.get(prefix, 1.0)
+                            A = lora_A[prefix].float()
+                            B = lora_B[prefix].float()
+                            delta = (B @ A) * scale
+                            if fan_in_fan_out.get(prefix, False):
+                                delta = delta.T
+                            clean[ck] = (v.float() + delta).to(v.dtype)
+                        else:
+                            clean[ck] = v
+                    else:
+                        clean[k.removeprefix('base_model.model.')] = v
             params = clean
 
         log_gpu_memory_usage("After state_dict() in sharding manager memory", logger=logger)
