@@ -95,21 +95,27 @@ class FSDPSGLangShardingManager(BaseShardingManager):
         if self.offload_param:
             load_fsdp_model_to_gpu(self.module)
 
-        # LoRA: merge adapters into base weights so sglang sees a standard model.
-        # torch.no_grad() is required: after a training step the optimizer modifies
-        # LoRA weights in-place, leaving stale autograd views; merge_adapter() calls
-        # weight_B @ weight_A which PyTorch refuses on in-place-modified view bases.
         inner = getattr(self.module, '_fsdp_wrapped_module', self.module)
         is_peft = hasattr(inner, 'peft_config')
-        with torch.no_grad():
-            if is_peft:
-                inner.merge_adapter()
+
+        if is_peft:
+            # FSDP-safe LoRA merge pattern:
+            # summon_full_params temporarily materialises all parameters on GPU
+            # (including LoRA A/B) regardless of param_offload setting.
+            # writeback=True writes the merged values back into the flat param
+            # before re-sharding so that the following state_dict() sees merged weights.
+            # We then enter a second context to unmerge and restore the original state.
+            with FSDP.summon_full_params(self.module, writeback=True, with_grads=False):
+                with torch.no_grad():
+                    inner.merge_adapter()
 
         params = self.module.state_dict()
 
-        with torch.no_grad():
-            if is_peft:
-                inner.unmerge_adapter()
+        if is_peft:
+            with FSDP.summon_full_params(self.module, writeback=True, with_grads=False):
+                with torch.no_grad():
+                    inner.unmerge_adapter()
+
             # Strip PEFT prefixes and drop LoRA-specific keys so sglang sees a plain model state dict.
             # PEFT wraps each LoRA target as:  base_model.model.<path>.base_layer.<param>
             # sglang expects the vanilla key:  <path>.<param>
@@ -117,8 +123,8 @@ class FSDPSGLangShardingManager(BaseShardingManager):
             for k, v in params.items():
                 if any(tag in k for tag in ('lora_A', 'lora_B', 'lora_embedding', 'lora_magnitude')):
                     continue
-                k = k.removeprefix('base_model.model.')  # remove outer PEFT wrapper
-                k = k.replace('.base_layer.', '.')        # qkv_proj.base_layer.weight → qkv_proj.weight
+                k = k.removeprefix('base_model.model.')
+                k = k.replace('.base_layer.', '.')
                 clean[k] = v
             params = clean
 
