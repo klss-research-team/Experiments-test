@@ -108,50 +108,47 @@ class FSDPSGLangShardingManager(BaseShardingManager):
             # are different abstraction layers; mixing them (merge_adapter on FSDP views)
             # causes allocation and autograd errors. Keeping them separate is the stable design.
 
-            # Collect per-layer scaling factors — plain Python floats, not FSDP tensors.
-            scalings: dict = {}
-            fan_in_fan_out: dict = {}
+            # Build an exact base-weight-key → (lora_A, lora_B, scale, fan_in_fan_out) map
+            # by walking the model's module tree. This is semantically correct: we know exactly
+            # which state-dict key is a weight matrix vs a bias, and we never rely on loose
+            # prefix-based string matching that mis-fires on biases sharing the same layer name.
+            lora_merge_map: dict = {}
             for name, mod in inner.named_modules():
-                if hasattr(mod, 'lora_A') and hasattr(mod, 'scaling'):
-                    for adapter in mod.active_adapters:
-                        key = f'base_model.model.{name}'
-                        scalings[key] = mod.scaling.get(adapter, 1.0)
-                        fan_in_fan_out[key] = getattr(mod, 'fan_in_fan_out', False)
+                if not (hasattr(mod, 'lora_A') and hasattr(mod, 'scaling') and hasattr(mod, 'base_layer')):
+                    continue
+                for adapter in mod.active_adapters:
+                    if adapter not in mod.lora_A:
+                        continue
+                    base_key = f'base_model.model.{name}.base_layer.weight'
+                    lora_A_key = f'base_model.model.{name}.lora_A.{adapter}.weight'
+                    lora_B_key = f'base_model.model.{name}.lora_B.{adapter}.weight'
+                    if base_key in params and lora_A_key in params and lora_B_key in params:
+                        lora_merge_map[base_key] = (
+                            params[lora_A_key],
+                            params[lora_B_key],
+                            mod.scaling[adapter],
+                            getattr(mod, 'fan_in_fan_out', False),
+                        )
 
-            # Partition state dict: lora_A, lora_B, and everything else.
-            lora_A: dict = {}
-            lora_B: dict = {}
-            other: dict = {}
-            for k, v in params.items():
-                if '.lora_A.' in k:
-                    lora_A[k[:k.index('.lora_A.')]] = v
-                elif '.lora_B.' in k:
-                    lora_B[k[:k.index('.lora_B.')]] = v
-                elif any(tag in k for tag in ('lora_embedding', 'lora_magnitude')):
-                    pass
-                else:
-                    other[k] = v
-
-            # Compute merged weights as pure arithmetic on state-dict copies.
-            # The FSDP model is never modified.
+            # Build clean merged state dict. Every key is handled explicitly:
+            # - LoRA A/B tensors are dropped (sglang needs a plain model).
+            # - Base weights with a known LoRA merge get the delta applied.
+            # - Everything else (biases, norms, embeddings) passes through unchanged.
+            lora_sd_tags = ('lora_A', 'lora_B', 'lora_embedding', 'lora_magnitude')
             clean: dict = {}
             with torch.no_grad():
-                for k, v in other.items():
-                    if '.base_layer.' in k:
-                        prefix = k[:k.index('.base_layer.')]
-                        ck = k.removeprefix('base_model.model.').replace('.base_layer.', '.')
-                        if prefix in lora_A and prefix in lora_B:
-                            scale = scalings.get(prefix, 1.0)
-                            A = lora_A[prefix].float()
-                            B = lora_B[prefix].float()
-                            delta = (B @ A) * scale
-                            if fan_in_fan_out.get(prefix, False):
-                                delta = delta.T
-                            clean[ck] = (v.float() + delta).to(v.dtype)
-                        else:
-                            clean[ck] = v
+                for k, v in params.items():
+                    if any(tag in k for tag in lora_sd_tags):
+                        continue
+                    ck = k.removeprefix('base_model.model.').replace('.base_layer.', '.')
+                    if k in lora_merge_map:
+                        A_t, B_t, scale, fif = lora_merge_map[k]
+                        delta = (B_t.float() @ A_t.float()) * scale
+                        if fif:
+                            delta = delta.T
+                        clean[ck] = (v.float() + delta).to(v.dtype)
                     else:
-                        clean[k.removeprefix('base_model.model.')] = v
+                        clean[ck] = v
             params = clean
 
         log_gpu_memory_usage("After state_dict() in sharding manager memory", logger=logger)
