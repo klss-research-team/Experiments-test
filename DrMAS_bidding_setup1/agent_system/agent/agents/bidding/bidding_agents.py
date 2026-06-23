@@ -20,15 +20,12 @@ BIDDER_A_PROMPT = """
     {step}
 
     # Your Role: Bidder A
-    You are Bidder A in a procurement auction competing against Bidder B for
-    the same contract. Each round you are given a cost and a budget ceiling.
-    Place a bid and provide a clear public reasoning for your decision.
+    You are Bidder A in a sealed-bid procurement auction. Read the current round
+    description carefully — each round presents a different scenario with its own
+    cost and budget ceiling. Place a bid based on THIS round's cost and budget.
 
-    Your bid and reasoning will be scored by an independent judge on quality
-    and competitiveness. Aim to achieve a higher judge score than Bidder B.
-
-    Bid constraint: your bid must be > your cost and <= the budget ceiling.
-    Bids outside this range are invalid.
+    Give a strong, specific reasoning tied to the current scenario
+    to beat Bidder B's score from the independent judge.
 
     Respond in this exact format:
     **Think:** your strategic reasoning here (max 80 words)
@@ -47,15 +44,12 @@ BIDDER_B_PROMPT = """
     {step}
 
     # Your Role: Bidder B
-    You are Bidder B in a procurement auction competing against Bidder A for
-    the same contract. Each round you are given a cost and a budget ceiling.
-    Place a bid and provide a clear public reasoning for your decision.
+    You are Bidder B in a sealed-bid procurement auction. Read the current round
+    description carefully — each round presents a different scenario with its own
+    cost and budget ceiling. Place a bid based on THIS round's cost and budget.
 
-    Your bid and reasoning will be scored by an independent judge on quality
-    and competitiveness. Aim to achieve a higher judge score than Bidder A.
-
-    Bid constraint: your bid must be > your cost and <= the budget ceiling.
-    Bids outside this range are invalid.
+    Give a strong, specific reasoning tied to the current scenario
+    to beat Bidder A's score from the independent judge.
 
     Respond in this exact format:
     **Think:** your strategic reasoning here (max 80 words)
