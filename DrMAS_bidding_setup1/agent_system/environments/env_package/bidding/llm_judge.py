@@ -81,6 +81,13 @@ def _parse_judge_output(text: str) -> Optional[Tuple[float, float, str, str]]:
     return None
 
 
+_INVALID_BID_REASON = "Invalid bid (must be strictly above cost and at most the budget ceiling)."
+
+
+def _is_valid(bid: Optional[float], cost: float, budget: float) -> bool:
+    return bid is not None and bid > cost and bid <= budget
+
+
 def score_round_competitiveness(
     bid_a: Optional[float],
     bid_b: Optional[float],
@@ -92,11 +99,20 @@ def score_round_competitiveness(
     """
     Score each bidder independently on bid quality AND reasoning quality.
 
+    Invalid bids (None, at or below cost, above budget) are forced to 0.0
+    without consulting the LLM — good reasoning cannot redeem a bad bid.
+
     Reads JUDGE_API_KEY, JUDGE_MODEL, JUDGE_BASE_URL from the environment.
 
     Returns (score_A, score_B, judge_reasoning_A, judge_reasoning_B).
     Falls back to (0.5, 0.5, "", "") on transient API errors.
     """
+    valid_a = _is_valid(bid_a, cost, budget)
+    valid_b = _is_valid(bid_b, cost, budget)
+
+    if not valid_a and not valid_b:
+        return 0.0, 0.0, _INVALID_BID_REASON, _INVALID_BID_REASON
+
     api_key  = os.environ.get("JUDGE_API_KEY", "").strip()
     model    = os.environ.get("JUDGE_MODEL", "gpt-4o").strip()
     base_url = os.environ.get("JUDGE_BASE_URL", "").strip() or None
@@ -117,12 +133,18 @@ def score_round_competitiveness(
     )
 
     try:
-        return _call_llm(prompt, api_key, model, base_url)
+        sa, sb, ra, rb = _call_llm(prompt, api_key, model, base_url)
     except ValueError:
         raise  # configuration error (e.g. missing JUDGE_BASE_URL) — do not swallow
     except Exception:
-        # Transient API/network error — return neutral scores so training is not interrupted.
         return 0.5, 0.5, "", ""
+
+    if not valid_a:
+        sa, ra = 0.0, _INVALID_BID_REASON
+    if not valid_b:
+        sb, rb = 0.0, _INVALID_BID_REASON
+
+    return sa, sb, ra, rb
 
 
 def _call_llm(
