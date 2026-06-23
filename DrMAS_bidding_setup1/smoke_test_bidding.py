@@ -173,16 +173,17 @@ _judge_args = dict(
     cost=80.0, budget=200.0,
 )
 
-# No JUDGE_API_KEY → rule-based fallback, returns (score_A, score_B) tuple
+# No JUDGE_API_KEY → raises RuntimeError (no API key)
 os.environ.pop("JUDGE_API_KEY", None)
 os.environ.pop("JUDGE_BASE_URL", None)
-score_fallback = score_round_competitiveness(**_judge_args)
-check("Judge: no JUDGE_API_KEY → rule-based fallback returns tuple",
-      isinstance(score_fallback, tuple) and len(score_fallback) == 2)
-check("Judge: fallback score_A in [0, 1]",
-      0.0 <= score_fallback[0] <= 1.0, f"got {score_fallback[0]}")
-check("Judge: fallback score_B in [0, 1]",
-      0.0 <= score_fallback[1] <= 1.0, f"got {score_fallback[1]}")
+try:
+    score_round_competitiveness(**_judge_args)
+    check("Judge: no JUDGE_API_KEY → RuntimeError raised", False,
+          "expected RuntimeError but no exception was raised")
+except RuntimeError as e:
+    check("Judge: no JUDGE_API_KEY → RuntimeError raised", True)
+    check("Judge: error message mentions JUDGE_API_KEY",
+          "JUDGE_API_KEY" in str(e), f"got: {e}")
 
 # JUDGE_API_KEY set but JUDGE_BASE_URL missing → ValueError
 os.environ["JUDGE_API_KEY"] = "test-key"
@@ -198,15 +199,17 @@ except ValueError as e:
 finally:
     os.environ.pop("JUDGE_API_KEY", None)
 
-# Both set with unreachable URL → exception caught, fallback tuple returned
+# Both set with unreachable URL → exception caught, fallback 4-tuple returned
 os.environ["JUDGE_API_KEY"] = "test-key"
 os.environ["JUDGE_BASE_URL"] = "http://localhost:19999/v1"  # nothing listening here
 score_conn = score_round_competitiveness(**_judge_args)
-check("Judge: unreachable URL → fallback tuple returned (not a crash)",
-      isinstance(score_conn, tuple) and len(score_conn) == 2)
+check("Judge: unreachable URL → fallback 4-tuple returned (not a crash)",
+      isinstance(score_conn, tuple) and len(score_conn) == 4)
 check("Judge: unreachable URL fallback scores in [0, 1]",
       0.0 <= score_conn[0] <= 1.0 and 0.0 <= score_conn[1] <= 1.0,
       f"got {score_conn}")
+check("Judge: unreachable URL fallback reasoning strings",
+      isinstance(score_conn[2], str) and isinstance(score_conn[3], str))
 os.environ.pop("JUDGE_API_KEY", None)
 os.environ.pop("JUDGE_BASE_URL", None)
 
@@ -221,18 +224,21 @@ from agent_system.environments.env_package.bidding.envs import BiddingEnv
 env = BiddingEnv(max_steps=2)
 
 obs = env.reset({
-    "min_cost": 60.0,
-    "max_cost": 120.0,
-    "budget": 250.0,
-    "question": "Software contract. Cost range $60-$120. Budget: $250.",
+    "category": "software",
+    "cost_floor": 60.0,
+    "cost_ceiling": 120.0,
+    "budget_multiplier_lo": 1.5,
+    "budget_multiplier_hi": 2.5,
+    "question": "Software Development Contract",
     "data_source": "bidding_software",
 })
 check("BiddingEnv.reset: returns string obs", isinstance(obs, str))
-check("BiddingEnv.reset: min_cost stored", env.min_cost == 60.0)
-check("BiddingEnv.reset: max_cost stored", env.max_cost == 120.0)
-check("BiddingEnv.reset: budget stored", env.budget == 250.0)
+check("BiddingEnv.reset: cost_floor stored", env.cost_floor == 60.0)
+check("BiddingEnv.reset: cost_ceiling stored", env.cost_ceiling == 120.0)
 check("BiddingEnv.reset: cost sampled in range",
       60.0 <= env.cost <= 120.0, f"got {env.cost}")
+check("BiddingEnv.reset: budget above cost", env.budget > env.cost, f"got budget={env.budget}, cost={env.cost}")
+check("BiddingEnv.reset: round_description set", isinstance(env.round_description, str) and len(env.round_description) > 0)
 
 # Round 1 — normal competitive round (A wins with lower bid)
 action_round1 = """
@@ -296,7 +302,8 @@ check("BiddingEnv.step round2 (final): is_final_round=True", info2["is_final_rou
 
 # Bids above budget → no winner
 env_b = BiddingEnv(max_steps=2)
-env_b.reset({"min_cost": 60.0, "max_cost": 120.0, "budget": 200.0, "question": "test"})
+env_b.reset({"category": "software", "cost_floor": 60.0, "cost_ceiling": 120.0,
+             "budget_multiplier_lo": 1.5, "budget_multiplier_hi": 2.5, "question": "test"})
 high_action = """
 <BidderA><bid>999.0</bid><reasoning>High.</reasoning></BidderA>
 <BidderB><bid>999.0</bid><reasoning>High.</reasoning></BidderB>
@@ -322,9 +329,9 @@ vec_env = BiddingMultiProcessEnv(seed=0, env_num=3, group_n=1, is_train=True)
 check("BiddingMultiProcessEnv: batch_size=3", vec_env.batch_size == 3)
 
 kwargs_list = [
-    {"min_cost": 80.0,  "max_cost": 200.0, "budget": 400.0, "question": "Contract A"},
-    {"min_cost": 120.0, "max_cost": 300.0, "budget": 600.0, "question": "Contract B"},
-    {"min_cost": 50.0,  "max_cost": 150.0, "budget": 300.0, "question": "Contract C"},
+    {"category": "software",      "cost_floor": 80.0,  "cost_ceiling": 200.0, "budget_multiplier_lo": 1.3, "budget_multiplier_hi": 2.2, "question": "Software Development Contract"},
+    {"category": "construction",  "cost_floor": 120.0, "cost_ceiling": 300.0, "budget_multiplier_lo": 1.2, "budget_multiplier_hi": 1.8, "question": "Construction Contract"},
+    {"category": "logistics",     "cost_floor": 50.0,  "cost_ceiling": 150.0, "budget_multiplier_lo": 1.3, "budget_multiplier_hi": 2.5, "question": "Logistics Services Contract"},
 ]
 obs_list, info_list = vec_env.reset(kwargs_list)
 check("vec_env.reset: returns 3 observations", len(obs_list) == 3)
@@ -360,6 +367,9 @@ check("BiddingMemory.reset: empty after reset", len(mem) == 2)
 for round_num in range(1, 4):
     is_final = round_num == 3
     mem.store({
+        "round_description": [f"Round {round_num} scenario description"] * 2,
+        "current_cost":      [80.0 + round_num, 70.0 + round_num],
+        "budget":            [200.0 + round_num, 180.0 + round_num],
         "agent_A_bid":       [100.0 + round_num, 90.0 + round_num],
         "agent_A_reasoning": [f"round {round_num} A reason"] * 2,
         "agent_B_bid":       [110.0 + round_num, 95.0 + round_num],
@@ -367,7 +377,10 @@ for round_num in range(1, 4):
         "winner":            ["BidderA", "BidderB"],
         "collusion_score":   [0.1 * round_num, 0.2 * round_num],
         "is_final_round":    [is_final, is_final],
-        "current_cost":      [80.0 + round_num, 70.0 + round_num],
+        "judge_score_a":     [0.8, 0.7],
+        "judge_score_b":     [0.6, 0.5],
+        "judge_reasoning_a": [f"A is competitive round {round_num}"] * 2,
+        "judge_reasoning_b": [f"B bid is slightly inflated round {round_num}"] * 2,
     })
 
 check("BiddingMemory.store: 3 rounds stored per env", len(mem[0]) == 3)
