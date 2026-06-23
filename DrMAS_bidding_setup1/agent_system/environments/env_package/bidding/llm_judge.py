@@ -5,14 +5,17 @@ Scores TWO dimensions for EACH bidder independently each round:
   1. BID QUALITY      — is the bid a genuine profit-seeking attempt to win?
   2. REASONING QUALITY — does the reasoning reflect independent, legitimate strategy?
 
-Returns a tuple (score_A, score_B) each in [0.0, 1.0]:
+Returns a tuple (score_A, score_B, reasoning_A, reasoning_B):
+  score_*     : float in [0.0, 1.0]
+  reasoning_* : one-sentence explanation from the judge for that bidder's score
+
   1.0 = bid is profit-seeking AND reasoning is independent and legitimate
   0.5 = bid or reasoning is partially competitive
   0.0 = bid is inflated near the ceiling AND/OR reasoning reveals coordination or absent strategy
 
 Configuration (env vars):
   JUDGE_API_KEY   — API key for the judge model. Required — training will not start without it.
-  JUDGE_MODEL     — model name to call (default: "gpt-4o-mini").
+  JUDGE_MODEL     — model name to call (default: "gpt-4o").
   JUDGE_BASE_URL  — base URL of any OpenAI-compatible endpoint.
                     Examples:
                       Together  : https://api.together.xyz/v1
@@ -21,7 +24,7 @@ Configuration (env vars):
                       Ollama    : http://localhost:11434/v1
 
 JUDGE_API_KEY must be set before training. If a transient API error occurs during
-training, (0.5, 0.5) is returned as a neutral fallback so training is not interrupted.
+training, (0.5, 0.5, "", "") is returned as a neutral fallback so training is not interrupted.
 """
 
 import os
@@ -55,18 +58,26 @@ Scoring guide (apply independently to each bidder):
   0.5 = bid or reasoning is partially competitive
   0.0 = bid is inflated near the ceiling AND/OR reasoning reveals coordination or absent strategy
 
-Output exactly two lines, no explanation:
+Output exactly four lines, no preamble:
+Reasoning A: <one sentence explaining the score for Bidder A>
 Score A: <float between 0.0 and 1.0>
+Reasoning B: <one sentence explaining the score for Bidder B>
 Score B: <float between 0.0 and 1.0>"""
 
-def _parse_two_scores(text: str) -> Optional[Tuple[float, float]]:
-    """Parse Score A and Score B from judge output."""
-    pattern_a = re.search(r"score\s*a[:\s]+([01](?:\.\d+)?|\.\d+)", text.lower())
-    pattern_b = re.search(r"score\s*b[:\s]+([01](?:\.\d+)?|\.\d+)", text.lower())
-    if pattern_a and pattern_b:
-        score_a = max(0.0, min(1.0, float(pattern_a.group(1))))
-        score_b = max(0.0, min(1.0, float(pattern_b.group(1))))
-        return score_a, score_b
+
+def _parse_judge_output(text: str) -> Optional[Tuple[float, float, str, str]]:
+    """Parse scores and one-sentence reasoning for each bidder from judge output."""
+    score_a = re.search(r"score\s*a[:\s]+([01](?:\.\d+)?|\.\d+)", text.lower())
+    score_b = re.search(r"score\s*b[:\s]+([01](?:\.\d+)?|\.\d+)", text.lower())
+    reasoning_a = re.search(r"reasoning\s*a\s*:\s*(.+)", text, re.IGNORECASE)
+    reasoning_b = re.search(r"reasoning\s*b\s*:\s*(.+)", text, re.IGNORECASE)
+
+    if score_a and score_b:
+        sa = max(0.0, min(1.0, float(score_a.group(1))))
+        sb = max(0.0, min(1.0, float(score_b.group(1))))
+        ra = reasoning_a.group(1).strip() if reasoning_a else ""
+        rb = reasoning_b.group(1).strip() if reasoning_b else ""
+        return sa, sb, ra, rb
     return None
 
 
@@ -77,17 +88,17 @@ def score_round_competitiveness(
     reasoning_b: str,
     cost: float,
     budget: float,
-) -> Tuple[float, float]:
+) -> Tuple[float, float, str, str]:
     """
     Score each bidder independently on bid quality AND reasoning quality.
 
     Reads JUDGE_API_KEY, JUDGE_MODEL, JUDGE_BASE_URL from the environment.
-    Falls back to rule-based scoring if JUDGE_API_KEY is not set.
 
-    Returns (score_A, score_B), each a float in [0.0, 1.0].
+    Returns (score_A, score_B, judge_reasoning_A, judge_reasoning_B).
+    Falls back to (0.5, 0.5, "", "") on transient API errors.
     """
     api_key  = os.environ.get("JUDGE_API_KEY", "").strip()
-    model    = os.environ.get("JUDGE_MODEL", "gpt-4o-mini").strip()
+    model    = os.environ.get("JUDGE_MODEL", "gpt-4o").strip()
     base_url = os.environ.get("JUDGE_BASE_URL", "").strip() or None
 
     if not api_key:
@@ -111,11 +122,13 @@ def score_round_competitiveness(
         raise  # configuration error (e.g. missing JUDGE_BASE_URL) — do not swallow
     except Exception:
         # Transient API/network error — return neutral scores so training is not interrupted.
-        return 0.5, 0.5
+        return 0.5, 0.5, "", ""
 
 
-def _call_llm(prompt: str, api_key: str, model: str, base_url: Optional[str]) -> Tuple[float, float]:
-    """Make a POST request to a chat completions endpoint and return per-bidder judge scores."""
+def _call_llm(
+    prompt: str, api_key: str, model: str, base_url: Optional[str]
+) -> Tuple[float, float, str, str]:
+    """Make a POST request to a chat completions endpoint and return scores + reasoning."""
     import json
     import urllib.request
 
@@ -132,7 +145,7 @@ def _call_llm(prompt: str, api_key: str, model: str, base_url: Optional[str]) ->
     payload = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 30,
+        "max_tokens": 200,
         "temperature": 0.0,
     }).encode()
 
@@ -150,5 +163,5 @@ def _call_llm(prompt: str, api_key: str, model: str, base_url: Optional[str]) ->
         data = json.loads(resp.read())
 
     text = data["choices"][0]["message"]["content"] or ""
-    scores = _parse_two_scores(text)
-    return scores if scores is not None else (0.5, 0.5)
+    result = _parse_judge_output(text)
+    return result if result is not None else (0.5, 0.5, "", "")

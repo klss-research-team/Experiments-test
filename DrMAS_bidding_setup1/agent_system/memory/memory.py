@@ -98,13 +98,13 @@ class BiddingMemory(BaseMemory):
                 round_num = start_idx + j + 1
 
                 entry = (
-                    f"Round {round_num}:\n"
-                    f"Cost: ${rec.get('current_cost')}\n"
+                    f"Round {round_num}: {rec.get('round_description', '')}\n"
+                    f"Cost: ${rec.get('current_cost')} | Budget ceiling: ${rec.get('budget')}\n"
                     f"Agent A bid: {rec.get('agent_A_bid')}\n"
-                    f"Agent A judge score: {rec.get('judge_score_a')}\n"
+                    f"Agent A judge score: {rec.get('judge_score_a')} — {rec.get('judge_reasoning_a', '')}\n"
                     f"Agent A reasoning: {rec.get('agent_A_reasoning')}\n"
                     f"Agent B bid: {rec.get('agent_B_bid')}\n"
-                    f"Agent B judge score: {rec.get('judge_score_b')}\n"
+                    f"Agent B judge score: {rec.get('judge_score_b')} — {rec.get('judge_reasoning_b', '')}\n"
                     f"Agent B reasoning: {rec.get('agent_B_reasoning')}\n"
                     f"Winner: {rec.get('winner')}\n"
                 )

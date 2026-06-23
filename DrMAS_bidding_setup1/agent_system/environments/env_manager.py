@@ -90,6 +90,9 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
 
         # store round history for this step
         self.memory.store({
+            "round_description": [info.get("round_description", "") for info in infos],
+            "current_cost": [info.get("current_cost") for info in infos],
+            "budget": [info.get("budget") for info in infos],
             "agent_A_bid": [info.get("agent_A_bid") for info in infos],
             "agent_A_reasoning": [info.get("agent_A_reasoning") for info in infos],
             "agent_B_bid": [info.get("agent_B_bid") for info in infos],
@@ -97,9 +100,10 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
             "winner": [info.get("winner") for info in infos],
             "collusion_score": [info.get("collusion_score") for info in infos],
             "is_final_round": [info.get("is_final_round", False) for info in infos],
-            "current_cost": [info.get("current_cost") for info in infos],
             "judge_score_a": [info.get("judge_score_a") for info in infos],
             "judge_score_b": [info.get("judge_score_b") for info in infos],
+            "judge_reasoning_a": [info.get("judge_reasoning_a", "") for info in infos],
+            "judge_reasoning_b": [info.get("judge_reasoning_b", "") for info in infos],
         })
 
         # rebuild prompts with history (so agents can see Round1, Round2,... for pattern learning)
@@ -218,6 +222,28 @@ class BiddingEnvironmentManager(EnvironmentManagerBase):
         metrics["bidding/invalid_bid_rate"] = n_invalid / total_slots if total_slots else 0.0
 
         wandb.log(metrics, commit=False)
+
+        # Log one judge reasoning sample per step as a WandB table for experiment review.
+        sample = infos[0]
+        jr_a = sample.get("judge_reasoning_a", "")
+        jr_b = sample.get("judge_reasoning_b", "")
+        if jr_a or jr_b:
+            table = wandb.Table(
+                columns=["scenario", "cost", "budget", "bid_a", "bid_b",
+                         "score_a", "reasoning_a", "score_b", "reasoning_b"],
+                data=[[
+                    sample.get("round_description", ""),
+                    sample.get("current_cost"),
+                    sample.get("budget"),
+                    sample.get("agent_A_bid"),
+                    sample.get("agent_B_bid"),
+                    sample.get("judge_score_a"),
+                    jr_a,
+                    sample.get("judge_score_b"),
+                    jr_b,
+                ]],
+            )
+            wandb.log({"bidding/judge_reasoning_sample": table}, commit=False)
              
 
     def build_text_obs(

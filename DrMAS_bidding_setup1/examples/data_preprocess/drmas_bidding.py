@@ -1,8 +1,10 @@
 """
 Synthetic dataset generator for the DrMAS procurement bidding environment.
 
-Generates parameterized auction scenarios across contract categories with
-varied cost and budget values. No external dataset download required.
+Each dataset row fixes the contract CATEGORY for an episode (e.g. "software").
+Within the episode, BiddingEnv samples a fresh scenario description, cost, and
+budget at the start of every round, giving agents meaningful per-round context
+to reason about rather than just reacting to numbers.
 
 Usage:
     python drmas_bidding.py --local_dir ~/data/drmas_bidding
@@ -19,114 +21,62 @@ from datasets import Dataset
 
 
 # ---------------------------------------------------------------------------
-# Contract scenario templates
-# Each entry: (category, description_template, cost_range, budget_multiplier_range)
-# cost_range       : (cost_floor, cost_ceiling) — absolute bounds for the category.
-#                    min_cost and max_cost are sampled randomly within these bounds
-#                    each scenario so every row has a distinct cost window.
-# budget_multiplier: budget = max_cost * U(lo, hi)  — buyer always has headroom
+# Contract category templates
+# Each entry: (category, episode_header, cost_range, budget_multiplier_range)
+# episode_header        : shown to agents every round as the contract type context.
+# cost_range            : (cost_floor, cost_ceiling) passed to BiddingEnv for
+#                         per-round cost sampling.
+# budget_multiplier_range: (lo, hi) — budget = cost * U(lo, hi) each round.
 # ---------------------------------------------------------------------------
 SCENARIO_TEMPLATES = [
     (
         "software",
-        (
-            "Software development contract: build a {adjective} {product} system. "
-            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
-            "Buyer budget ceiling: ${budget:.0f}. "
-            "You will be told the exact cost for each round before bidding."
-        ),
+        "Software Development Contract",
         (80, 400),
         (1.3, 2.2),
-        ["web", "mobile", "data pipeline", "API integration", "dashboard", "automation"],
-        ["enterprise", "scalable", "real-time", "cloud-native", "AI-powered", "modular"],
     ),
     (
         "construction",
-        (
-            "Construction contract: {adjective} {product} project. "
-            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
-            "Buyer budget ceiling: ${budget:.0f}. "
-            "You will be told the exact cost for each round before bidding."
-        ),
+        "Construction Contract",
         (200, 2000),
         (1.2, 1.8),
-        ["office renovation", "warehouse expansion", "facility upgrade", "road repair", "bridge maintenance", "drainage installation"],
-        ["small-scale", "medium-scale", "high-priority", "time-sensitive", "multi-phase", "turnkey"],
     ),
     (
         "logistics",
-        (
-            "Logistics services contract: {adjective} {product} operation. "
-            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
-            "Buyer budget ceiling: ${budget:.0f}. "
-            "You will be told the exact cost for each round before bidding."
-        ),
+        "Logistics Services Contract",
         (50, 300),
         (1.3, 2.5),
-        ["freight forwarding", "last-mile delivery", "cold-chain transport", "customs clearance", "warehousing", "distribution"],
-        ["regional", "national", "cross-border", "express", "bulk", "scheduled"],
     ),
     (
         "manufacturing",
-        (
-            "Manufacturing supply contract: {adjective} production of {product}. "
-            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
-            "Buyer budget ceiling: ${budget:.0f}. "
-            "You will be told the exact cost for each round before bidding."
-        ),
+        "Manufacturing Supply Contract",
         (100, 800),
         (1.2, 2.0),
-        ["electronic components", "mechanical parts", "packaging materials", "industrial equipment", "textile goods", "plastic components"],
-        ["high-volume", "custom", "precision", "certified", "rapid", "batch"],
     ),
     (
         "consulting",
-        (
-            "Professional services contract: {adjective} {product} engagement. "
-            "Contract cost range across rounds: ${min_cost:.0f}–${max_cost:.0f}. "
-            "Buyer budget ceiling: ${budget:.0f}. "
-            "You will be told the exact cost for each round before bidding."
-        ),
+        "Professional Services Contract",
         (60, 500),
         (1.4, 2.5),
-        ["strategy consulting", "IT advisory", "legal review", "financial audit", "compliance assessment", "market research"],
-        ["short-term", "ongoing", "project-based", "retainer", "diagnostic", "implementation"],
     ),
 ]
 
 
 def _sample_scenario(rng: random.Random) -> dict:
-    """Draw one random contract scenario and return its parameters."""
-    category, template, cost_range, bm_range, products, adjectives = rng.choice(
-        SCENARIO_TEMPLATES
-    )
+    """Pick a contract category for an episode.
 
-    cost_floor, cost_ceiling = cost_range
-    # Sample a random cost window within the category bounds so every scenario
-    # has a distinct min_cost and max_cost, not just a distinct budget.
-    min_cost = round(rng.uniform(cost_floor, cost_floor + (cost_ceiling - cost_floor) * 0.5), 2)
-    max_cost = round(rng.uniform(min_cost * 1.2, cost_ceiling), 2)
-    budget_multiplier = rng.uniform(*bm_range)
-    # Budget ceiling is based on max_cost so all per-round costs fit under budget.
-    budget = round(max_cost * budget_multiplier, 2)
-
-    product = rng.choice(products)
-    adjective = rng.choice(adjectives)
-
-    task_description = template.format(
-        adjective=adjective,
-        product=product,
-        min_cost=min_cost,
-        max_cost=max_cost,
-        budget=budget,
-    )
+    Per-round scenario descriptions, costs, and budgets are sampled by
+    BiddingEnv at runtime using the category-level bounds returned here.
+    """
+    category, episode_header, cost_range, bm_range = rng.choice(SCENARIO_TEMPLATES)
 
     return {
         "category": category,
-        "min_cost": float(min_cost),
-        "max_cost": float(max_cost),
-        "budget": budget,
-        "task_description": task_description,
+        "task_description": episode_header,
+        "cost_floor": float(cost_range[0]),
+        "cost_ceiling": float(cost_range[1]),
+        "budget_multiplier_lo": float(bm_range[0]),
+        "budget_multiplier_hi": float(bm_range[1]),
     }
 
 
@@ -138,24 +88,22 @@ def build_row(scenario: dict, idx: int, split: str) -> dict:
     to BiddingMultiProcessEnv.reset(), so all fields BiddingEnv.reset() reads
     must be present there.
     """
-    task_description = scenario["task_description"]
-    min_cost = scenario["min_cost"]
-    max_cost = scenario["max_cost"]
-    budget = scenario["budget"]
     category = scenario["category"]
+    task_description = scenario["task_description"]
+    cost_floor = scenario["cost_floor"]
+    cost_ceiling = scenario["cost_ceiling"]
+    budget_multiplier_lo = scenario["budget_multiplier_lo"]
+    budget_multiplier_hi = scenario["budget_multiplier_hi"]
 
     return {
         "data_source": "bidding",
         "ability": "bidding",
-        # prompt is tokenized as the initial user turn for the LLM
         "prompt": [
             {
                 "role": "user",
                 "content": task_description,
             }
         ],
-        # reward_model is required by the DataProto schema; unused for bidding
-        # (rewards are computed inside BiddingEnv.step, not from a reward model)
         "reward_model": {
             "style": "rule",
             "ground_truth": None,
@@ -163,18 +111,20 @@ def build_row(scenario: dict, idx: int, split: str) -> dict:
         "extra_info": {
             "split": split,
             "index": idx,
-            "min_cost": min_cost,
-            "max_cost": max_cost,
-            "budget": budget,
             "category": category,
+            "cost_floor": cost_floor,
+            "cost_ceiling": cost_ceiling,
+            "budget_multiplier_lo": budget_multiplier_lo,
+            "budget_multiplier_hi": budget_multiplier_hi,
         },
         # env_kwargs is passed verbatim to BiddingMultiProcessEnv.reset()
         "env_kwargs": {
-            "min_cost": min_cost,
-            "max_cost": max_cost,
-            "budget": budget,
-            "question": task_description,
+            "category": category,
             "task_description": task_description,
+            "cost_floor": cost_floor,
+            "cost_ceiling": cost_ceiling,
+            "budget_multiplier_lo": budget_multiplier_lo,
+            "budget_multiplier_hi": budget_multiplier_hi,
             "data_source": f"bidding_{category}",
         },
     }
@@ -193,11 +143,12 @@ def _hub_to_row(raw_row: dict, idx: int, split: str) -> dict:
     """Convert a raw HuggingFace dataset row into the training loop format."""
     return build_row(
         {
-            "category":         str(raw_row["category"]),
-            "min_cost":         float(raw_row["min_cost"]),
-            "max_cost":         float(raw_row["max_cost"]),
-            "budget":           float(raw_row["budget"]),
-            "task_description": str(raw_row["task_description"]),
+            "category":             str(raw_row["category"]),
+            "task_description":     str(raw_row.get("task_description", raw_row["category"].replace("_", " ").title())),
+            "cost_floor":           float(raw_row["cost_floor"]),
+            "cost_ceiling":         float(raw_row["cost_ceiling"]),
+            "budget_multiplier_lo": float(raw_row["budget_multiplier_lo"]),
+            "budget_multiplier_hi": float(raw_row["budget_multiplier_hi"]),
         },
         idx,
         split,
@@ -206,10 +157,9 @@ def _hub_to_row(raw_row: dict, idx: int, split: str) -> dict:
 
 def load_from_local(path: str, test_ratio: float = 0.1, seed: int = 42):
     """
-    Load a dataset from a local JSON file (array) or JSONL file (one object per line).
-    Validates, splits into train/test, and converts to training row format.
-
-    Expected fields per row: task_description, min_cost, max_cost, budget, category.
+    Load a dataset from a local JSON or JSONL file.
+    Expected fields per row: category, cost_floor, cost_ceiling,
+    budget_multiplier_lo, budget_multiplier_hi. task_description is optional.
     Returns (train_dataset, test_dataset).
     """
     path = os.path.expanduser(path)
@@ -223,7 +173,7 @@ def load_from_local(path: str, test_ratio: float = 0.1, seed: int = 42):
 
     print(f"Loaded {len(raw)} rows from {path}")
 
-    required = ("task_description", "min_cost", "max_cost", "budget", "category")
+    required = ("category", "cost_floor", "cost_ceiling", "budget_multiplier_lo", "budget_multiplier_hi")
     valid, skipped = [], 0
     for i, row in enumerate(raw):
         missing = [c for c in required if c not in row or row[c] is None]
@@ -231,12 +181,12 @@ def load_from_local(path: str, test_ratio: float = 0.1, seed: int = 42):
             print(f"  [skip] row {i}: missing fields {missing}")
             skipped += 1
             continue
-        if float(row["budget"]) <= float(row["max_cost"]):
-            print(f"  [skip] row {i}: budget ({row['budget']}) must be > max_cost ({row['max_cost']})")
+        if float(row["cost_ceiling"]) <= float(row["cost_floor"]):
+            print(f"  [skip] row {i}: cost_ceiling must be > cost_floor")
             skipped += 1
             continue
-        if float(row["max_cost"]) <= float(row["min_cost"]):
-            print(f"  [skip] row {i}: max_cost ({row['max_cost']}) must be > min_cost ({row['min_cost']})")
+        if float(row["budget_multiplier_hi"]) <= float(row["budget_multiplier_lo"]):
+            print(f"  [skip] row {i}: budget_multiplier_hi must be > budget_multiplier_lo")
             skipped += 1
             continue
         valid.append(dict(row))
@@ -245,8 +195,7 @@ def load_from_local(path: str, test_ratio: float = 0.1, seed: int = 42):
     if not valid:
         raise ValueError(
             "No valid rows found. Each row must have: "
-            "task_description, min_cost, max_cost, budget, category — "
-            "and budget > max_cost > min_cost."
+            "category, cost_floor, cost_ceiling, budget_multiplier_lo, budget_multiplier_hi."
         )
 
     rng = random.Random(seed)
@@ -263,14 +212,13 @@ def load_from_local(path: str, test_ratio: float = 0.1, seed: int = 42):
 def load_from_hub(dataset_id: str, test_ratio: float = 0.1, seed: int = 42):
     """
     Load a dataset from HuggingFace Hub, validate, split, and convert.
-
-    Expected columns: task_description, min_cost, max_cost, budget, category.
-    Invalid rows are skipped with a printed warning.
+    Expected columns: category, cost_floor, cost_ceiling,
+    budget_multiplier_lo, budget_multiplier_hi.
     Returns (train_dataset, test_dataset).
     """
     raw = datasets.load_dataset(dataset_id, split="train")
 
-    required = ("task_description", "min_cost", "max_cost", "budget", "category")
+    required = ("category", "cost_floor", "cost_ceiling", "budget_multiplier_lo", "budget_multiplier_hi")
     valid, skipped = [], 0
     for i, row in enumerate(raw):
         missing = [c for c in required if c not in row or row[c] is None]
@@ -278,12 +226,8 @@ def load_from_hub(dataset_id: str, test_ratio: float = 0.1, seed: int = 42):
             print(f"  [skip] row {i}: missing columns {missing}")
             skipped += 1
             continue
-        if float(row["budget"]) <= float(row["max_cost"]):
-            print(f"  [skip] row {i}: budget ({row['budget']}) must be > max_cost ({row['max_cost']})")
-            skipped += 1
-            continue
-        if float(row["max_cost"]) <= float(row["min_cost"]):
-            print(f"  [skip] row {i}: max_cost ({row['max_cost']}) must be > min_cost ({row['min_cost']})")
+        if float(row["cost_ceiling"]) <= float(row["cost_floor"]):
+            print(f"  [skip] row {i}: cost_ceiling must be > cost_floor")
             skipped += 1
             continue
         valid.append(dict(row))
@@ -292,8 +236,7 @@ def load_from_hub(dataset_id: str, test_ratio: float = 0.1, seed: int = 42):
     if not valid:
         raise ValueError(
             "No valid rows found. Check that your dataset has columns: "
-            "task_description, min_cost, max_cost, budget, category — "
-            "and that budget > max_cost > min_cost for every row."
+            "category, cost_floor, cost_ceiling, budget_multiplier_lo, budget_multiplier_hi."
         )
 
     rng = random.Random(seed)
@@ -312,18 +255,16 @@ if __name__ == "__main__":
     parser.add_argument(
         "--local_file", default=None,
         help="Path to a local JSON or JSONL file. "
-             "JSON array format: [{...}, {...}]. "
-             "JSONL format: one JSON object per line. "
-             "Required fields: task_description, min_cost, max_cost, budget, category.",
+             "Required fields: category, cost_floor, cost_ceiling, "
+             "budget_multiplier_lo, budget_multiplier_hi.",
     )
     parser.add_argument(
         "--dataset_id", default=None,
-        help="HuggingFace dataset ID, e.g. 'your-org/bidding-dataset'. "
-             "When set, loads real data from the Hub instead of generating synthetic scenarios.",
+        help="HuggingFace dataset ID.",
     )
     parser.add_argument(
         "--test_ratio", type=float, default=0.1,
-        help="Fraction of rows to use as the test split when loading from a file or Hub (default: 0.1 = 10%%).",
+        help="Fraction of rows to use as the test split (default: 0.1).",
     )
     parser.add_argument(
         "--seed", type=int, default=42,
@@ -363,8 +304,8 @@ if __name__ == "__main__":
     # Quick sanity check on first row
     row = train_dataset[0]
     print("\nSample row[0]:")
-    print(f"  category   : {row['extra_info']['category']}")
-    print(f"  min_cost   : ${row['env_kwargs']['min_cost']:.2f}")
-    print(f"  max_cost   : ${row['env_kwargs']['max_cost']:.2f}")
-    print(f"  budget     : ${row['env_kwargs']['budget']:.2f}")
-    print(f"  description: {row['prompt'][0]['content']}")
+    print(f"  category          : {row['extra_info']['category']}")
+    print(f"  cost_floor        : ${row['env_kwargs']['cost_floor']:.2f}")
+    print(f"  cost_ceiling      : ${row['env_kwargs']['cost_ceiling']:.2f}")
+    print(f"  budget_mult range : {row['env_kwargs']['budget_multiplier_lo']:.1f}x – {row['env_kwargs']['budget_multiplier_hi']:.1f}x")
+    print(f"  episode header    : {row['prompt'][0]['content']}")
