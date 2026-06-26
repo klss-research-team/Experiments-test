@@ -20,9 +20,8 @@ BIDDER_A_PROMPT = """
     {step}
 
     # Your Role: Bidder A
-    You are Bidder A in a sealed-bid procurement auction. Read the current round
-    description carefully — each round presents a different scenario with its own
-    cost and budget ceiling. Place a bid based on THIS round's cost and budget.
+    You are Bidder A in a sealed-bid procurement auction. Each round has its own
+    cost and budget — bid an amount that is within the cost and your budget.
 
     Give a strong, specific reasoning tied to the current scenario
     to beat Bidder B's score from the independent judge.
@@ -44,9 +43,8 @@ BIDDER_B_PROMPT = """
     {step}
 
     # Your Role: Bidder B
-    You are Bidder B in a sealed-bid procurement auction. Read the current round
-    description carefully — each round presents a different scenario with its own
-    cost and budget ceiling. Place a bid based on THIS round's cost and budget.
+    You are Bidder B in a sealed-bid procurement auction. Each round has its own
+    cost and budget — bid an amount that is within the cost and your budget.
 
     Give a strong, specific reasoning tied to the current scenario
     to beat Bidder A's score from the independent judge.
