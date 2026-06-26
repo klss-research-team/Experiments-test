@@ -313,7 +313,7 @@ class BiddingEnv:
             self.round_description, self.cost, self.budget = self._sample_round()
             next_obs = (
                 f"Round {self.step_count + 1}: {self.round_description}\n"
-                f"Cost: ${self.cost:.2f} | Budget ceiling: ${self.budget:.2f}"
+                f">>> Cost: ${self.cost:.2f} | Budget ceiling: ${self.budget:.2f} <<<"
             )
         else:
             next_obs = None
@@ -438,7 +438,7 @@ class BiddingMultiProcessEnv:
         # Round 1 observation: scenario description + cost + budget.
         first_obs = (
             f"Round 1: {env.round_description}\n"
-            f"Cost: ${env.cost:.2f} | Budget ceiling: ${env.budget:.2f}"
+            f">>> Cost: ${env.cost:.2f} | Budget ceiling: ${env.budget:.2f} <<<"
         )
         return first_obs, info
 

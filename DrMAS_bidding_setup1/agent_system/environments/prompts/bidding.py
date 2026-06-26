@@ -9,15 +9,15 @@
 
 BIDDING_TEMPLATE_NO_HIS = """Contract type: {task_description}
 
-=== CURRENT ROUND ===
+=== BID NOW ===
 {current_obs}
 """
 
 BIDDING_TEMPLATE = """Contract type: {task_description}
 
-=== PREVIOUS ROUNDS (history only — costs and budgets below are from past rounds, NOT the current one) ===
+=== PREVIOUS ROUNDS (for context only — do NOT use these costs or budgets) ===
 {memory_context}
 
-=== CURRENT ROUND {step_count} of {max_steps} ===
+=== BID NOW — ROUND {step_count} of {max_steps} ===
 {current_obs}
 """
